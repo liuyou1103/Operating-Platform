@@ -30,13 +30,9 @@ RUN /opt/miniconda/envs/op/bin/pip install --no-cache-dir -r requirements.txt -i
 # 设置运行时环境变量（关键！）
 ENV PATH="/opt/miniconda/envs/op/bin:$PATH"
 
-# 创建挂载目录并设置权限（避免挂载时权限问题）
+# 创建代码目录（避免挂载时覆盖 /app）
 RUN mkdir -p /app/code
-WORKDIR /app/code
-
-# 非 root 用户（增强安全性）
-RUN useradd -m appuser
-USER appuser
+WORKDIR /app/code  
 
 EXPOSE 8080
 CMD ["python", "operating_platform_server_test.py", "--log-output=stdout"]
