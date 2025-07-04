@@ -91,7 +91,7 @@ class FlaskServer:
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         CORS(self.app)
 
-        self.web = "http://120.92.91.171:30083/api"
+        self.web = "http://120.92.116.59:80/api"
         #self.web = "http://172.16.17.253:8080/api"
         self.session = requests.Session() 
         self.token = None

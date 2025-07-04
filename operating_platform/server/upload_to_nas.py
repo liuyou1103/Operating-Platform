@@ -17,8 +17,8 @@ nas_auth = NASAuthenticator()
 #fold_path1 = "/home/liuyou/Documents/local_to_nas/aloha-1/"
 fold_path1 = "/home/agilex/Documents/Ryu-Yang/Operating-Platform/dataset/"
 
-nas_path = "/传输路径/ceshi/cache"
-nas_data_path = '/传输路径/ceshi/collect_data'
+nas_path = "/传输路径/release/cache"
+nas_data_path = '/传输路径/release/collect_data'
 
 
 def copy_files(source_paths, destination_paths):

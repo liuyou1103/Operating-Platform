@@ -2,9 +2,10 @@
 
 # 配置参数（可修改）
 CONTAINER_NAME="kind_sanderson"      # 容器名称
-IMAGE_NAME="baai-flask-server"          # 镜像名称（默认使用 nginx）
+IMAGE_NAME="baai-flask-server-release"          # 镜像名称（默认使用 nginx）
 PORTS="-p 8080:8080"                 # 端口映射（主机端口:容器端口）
 VOLUMES="-v /home/agilex/Documents/:/home/agilex/Documents/"  # 卷挂载（可选）
+VOLUMES2="-v /app/code/:/home/agilex/Documents/server"  # 卷挂载（可选）
 RESTART_POLICY="--restart unless-stopped"  # 重启策略
 
 # 检查容器是否存在
