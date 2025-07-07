@@ -241,6 +241,23 @@ def change_number(task_path, nas_meta_file_path, n, m):
         for json_obj in json_objects:
             file.write(json.dumps(json_obj) + '\n')
 
+def change_number_info(task_path, nas_meta_file_path):
+    with open(task_path,"r",encoding="utf-8") as f:
+        data = json.load(f)
+        total_episodes = data["total_episodes"] 
+        total_frames = data["total_frames"]
+        total_videos = data["total_videos"]
+
+    with open(nas_meta_file_path,"r",encoding="utf-8") as f:
+        data_nas = json.load(f)
+        data_nas["total_episodes"] += total_episodes
+        data_nas["total_frames"] += total_frames
+        data_nas["total_videos"] += total_videos
+
+    # 将更新后的数据写回 nas_meta_file_path
+    with open(nas_meta_file_path, "w", encoding="utf-8") as f:
+        json.dump(data_nas, f, ensure_ascii=False, indent=4)
+
 def create_json(path,data):   
     # 创建并写入 JSON 文件
     with open(path, 'w') as file:
@@ -359,6 +376,14 @@ def upload():
                                 break
                         else:
                             last_epid = 0
+
+                        local_nas_info_path = os.path.join(directory_path,"info.json") # nas上的info.json文件保存到本地的地址
+                        nas_info_file_path = os.path.join(nas_data_path,middle_name,"meta","info.json") # nas上的info.json地址
+                        nas_auth.download_file(nas_info_file_path,local_nas_info_path) #下载nas文件到本地
+                        info_path = os.path.join(each_task_path,"meta","info.json") # 当前任务的info.json文件地址
+                        change_number_info(info_path,local_nas_info_path)
+
+                        meta_file_list.append(local_nas_info_path)
                         op_dataid_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
                         change_number(op_dataid_path,local_nas_meta_file_path,last_episode_id, last_epid)
                         
