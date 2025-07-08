@@ -201,7 +201,6 @@ class FlaskServer:
  
     def local_to_nas(self):
         print(f"任务执行于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        #time.sleep(5)
         if self.login():
             upload_to_nas.upload()
             with self.upload_lock:
