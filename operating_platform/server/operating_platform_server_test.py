@@ -112,7 +112,6 @@ class FlaskServer:
         self.upload_thread = threading.Thread(target=self.time_job, daemon=True)
         self.upload_nas_flag = False
         
-        
         # 响应模板
         self.response_start_collection = {
             "timestamp": time.time(),
@@ -478,7 +477,7 @@ class FlaskServer:
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'start_collection','msg': data})
             while True:
-                if 0 < self.response_start_collection["timestamp"] - now_time < 2:
+                if 0 < self.response_start_collection["timestamp"] - now_time < 8:
                     if self.response_start_collection['msg'] == "success":
                         response_data = {
                             "code": 200,
@@ -495,7 +494,7 @@ class FlaskServer:
                         return jsonify(response_data), 200
                 else:
                     time.sleep(0.02)
-                if time.time() - now_time > 5: # 正式环境设为2.5超时
+                if time.time() - now_time > 8: # 正式环境设为2.5超时
                     response_data = {
                             "code": 404,
                             "data":{},
@@ -517,7 +516,7 @@ class FlaskServer:
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'finish_collection'})
             while True:
-                if 0 < self.response_finish_collection["timestamp"] - now_time < 60:
+                if 0 < self.response_finish_collection["timestamp"] - now_time < 100:
                     if self.response_finish_collection['msg'] == "success":
                         response_data = {
                             "code": 200,
@@ -534,7 +533,7 @@ class FlaskServer:
                         return jsonify(response_data), 200
                 else:
                     time.sleep(0.02)
-                if time.time() - now_time > 70: # 正式环境设为2.5超时
+                if time.time() - now_time > 100: # 正式环境设为2.5超时
                     response_data = {
                             "code": 404,
                             "data":{},
@@ -556,7 +555,7 @@ class FlaskServer:
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'discard_collection'})
             while True:
-                if 0 < self.response_discard_collection["timestamp"] - now_time < 3:
+                if 0 < self.response_discard_collection["timestamp"] - now_time < 8:
                     if self.response_discard_collection['msg'] == "success":
                         response_data = {
                             "code": 200,
@@ -573,7 +572,7 @@ class FlaskServer:
                         return jsonify(response_data), 200
                 else:
                     time.sleep(0.02)
-                if time.time() - now_time > 5: # 正式环境设为2.5超时
+                if time.time() - now_time > 8: # 正式环境设为2.5超时
                     response_data = {
                             "code": 404,
                             "data":{},
@@ -595,7 +594,7 @@ class FlaskServer:
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'submit_collection'})
             while True:
-                if 0 < self.response_submit_collection["timestamp"] - now_time < 3:
+                if 0 < self.response_submit_collection["timestamp"] - now_time < 5:
                     if self.response_submit_collection['msg'] == "success":
                         response_data = {
                             "code": 200,
@@ -645,6 +644,14 @@ class FlaskServer:
                     return jsonify(response_data), 200
                 else:
                     self.upload_nas_flag = True
+                    if not upload_to_nas.nas_auth.get_auth_sid():
+                        response_data = {
+                            "code": 401,
+                            "data": {},
+                            "msg": '连接nas异常'
+                        }
+                        self.upload_nas_flag = False
+                        return jsonify(response_data), 200
                     upload_manual_thread = threading.Thread(target=self.local_to_nas,daemon=True)
                     upload_manual_thread.start()
                     response_data = {
