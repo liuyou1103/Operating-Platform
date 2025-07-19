@@ -61,9 +61,6 @@ def add_random_milliseconds():
     time.sleep(wait_time)
     # 计算新的时间戳
     new_timestamp = current_timestamp + random_milliseconds
-    print(f"当前时间戳: {current_timestamp}")
-    print(f"随机毫秒数: {random_milliseconds}")
-    print(f"新的时间戳: {new_timestamp}")
     return new_timestamp
 
 def get_today_date():
@@ -72,7 +69,6 @@ def get_today_date():
     
     # 格式化日期为字符串，格式为 "YYYY-MM-DD"
     date_string = today.strftime("%Y%m%d")
-    print(date_string)
     return date_string
 
 def get_today_time():
@@ -81,7 +77,6 @@ def get_today_time():
     
     # 格式化日期为字符串，格式为 "YYYY-MM-DD"
     date_string = today.strftime("%Y%m%d%H%M%S")
-    print(date_string)
     return date_string
 
 def extract_number(episode_name):
@@ -413,7 +408,6 @@ def upload():
                     nas_target_path = os.path.join(nas_data_path,middle_name)
                     nas_meta_file_path = os.path.join(nas_target_path,"meta","op_dataid.jsonl")
                     local_nas_meta_file_path = os.path.join(directory_path,"op_dataid.jsonl")
-                    print(nas_meta_file_path)
                     if nas_auth.check_file_exists(nas_meta_file_path):
                         nas_auth.download_file(nas_meta_file_path,local_nas_meta_file_path)
                     if os.path.exists(local_nas_meta_file_path): # 判断nas上是否有任务数据，有的话先合并json
