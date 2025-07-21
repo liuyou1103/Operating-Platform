@@ -220,8 +220,8 @@ class FlaskServer:
     def init_logging(self):
         """初始化日志配置"""
         now = datetime.datetime.now()
-        file_name = log_dir + now.strftime("%Y.%m.%d.%H.%M") + ".log"
-        log_dir = os.path.expanduser("~/Documents/server/release/log")
+        file_name = "./log/" + now.strftime("%Y.%m.%d.%H.%M") + ".log"
+        log_dir = "./log"
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         
