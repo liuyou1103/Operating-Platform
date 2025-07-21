@@ -1,14 +1,20 @@
 #!/bin/bash
 
-# 配置参数（可修改）
+# ====================== 配置参数（可修改） ======================
 CONTAINER_NAME="baai_flask_server"      # 容器名称
 IMAGE_NAME="baai-flask-server-release"  # 镜像名称
 PORTS="-p 8080:8080"                    # 端口映射（主机端口:容器端口）
-VOLUMES="-v /home/agilex/Documents/Operating-Platform/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/"  # 卷挂载
-VOLUMES2="-v /home/agilex/Documents/server/Operating-Platform/operating_platform/server/:/app/code/"  # 卷挂载
-PRIVILEGED="--privileged=true"               # 特权模式（谨慎使用）
-RESTART_POLICY="--restart unless-stopped"  # 重启策略
+PRIVILEGED="--privileged=true"          # 特权模式（谨慎使用）
+RESTART_POLICY="--restart unless-stopped" # 重启策略
 
+# 动态获取当前用户名（兼容性更好）
+CURRENT_USER=$(whoami)  # 或使用 $USER
+
+# 动态构建卷挂载路径（替换原硬编码的 "agilex"）
+VOLUMES="-v /home/${CURRENT_USER}/Documents/Operating-Platform/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/"
+VOLUMES2="-v /home/${CURRENT_USER}/Documents/server/Operating-Platform/operating_platform/server/:/app/code/"
+
+# ====================== 逻辑部分（无需修改） ======================
 # 检查镜像是否存在，不存在则拉取
 if ! docker images --format "{{.Repository}}" | grep -q "^${IMAGE_NAME}$"; then
     echo "镜像 '${IMAGE_NAME}' 不存在，正在拉取..."
