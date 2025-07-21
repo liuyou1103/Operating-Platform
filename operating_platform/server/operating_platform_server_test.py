@@ -208,8 +208,8 @@ class FlaskServer:
             logging.error("[Task] local_to_nas - 任务执行失败，登录不成功")
 
     def time_job(self):
-        schedule.every().day.at("20:00").do(self.local_to_nas)
-        logging.info("[Task] time_job - 定时任务已启动，每天20:00执行...")
+        schedule.every().day.at("22:00").do(self.local_to_nas)
+        logging.info("[Task] time_job - 定时任务已启动，每天22:00执行...")
         try:
             while True:
                 schedule.run_pending()
