@@ -352,6 +352,7 @@ def upload():
             date_data = get_yesterday_date()
         elif i == 2:
             date_data = get_day_before_yesterday_date()
+        print(date_data)
         directory_path = os.path.join(fold_path1, date_data,'user')
         #grant_recursive_rw_permission(directory_path,"agilex","agx") # 不可用
         #directory_path = os.path.join(fold_path1, "20250630")
