@@ -71,6 +71,16 @@ def get_today_date():
     date_string = today.strftime("%Y%m%d")
     return date_string
 
+def get_yesterday_date():
+    """返回昨天的日期，格式：YYYYMMDD"""
+    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+    return yesterday.strftime("%Y%m%d")
+ 
+def get_day_before_yesterday_date():
+    """返回前天的日期，格式：YYYYMMDD"""
+    day_before_yesterday = datetime.datetime.now() - datetime.timedelta(days=2)
+    return day_before_yesterday.strftime("%Y%m%d")
+
 def get_today_time():
     # 获取当前日期和时间
     today = datetime.datetime.now()
@@ -335,210 +345,217 @@ def upload():
     if not nas_auth.get_auth_sid():
         print("登录nas失败")
         return
-    directory_path = os.path.join(fold_path1, get_today_date(),'user')
-    #grant_recursive_rw_permission(directory_path,"agilex","agx") # 不可用
-    #directory_path = os.path.join(fold_path1, "20250630")
-    if not os.path.exists(directory_path):
-        print("数据路径不存在")
-        return  
-    entries = os.listdir(directory_path) # 各任务列表
-    # 筛选出子目录
-    subdirectories = [entry for entry in entries if os.path.isdir(os.path.join(directory_path, entry))] # 仅筛选目录
-    try:
-        for task_data_name in subdirectories: # 1813490901
-            json_object_list = []
-            each_task_path = os.path.join(directory_path,task_data_name)
-            each_common_record_path = os.path.join(each_task_path,"meta","common_record.json")
-            each_opdata_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
+    for i in range(3):
+        if i == 0:
+            date_data = get_today_date()
+        elif i == 1:
+            date_data = get_yesterday_date()
+        elif i == 2:
+            date_data = get_day_before_yesterday_date()
+        directory_path = os.path.join(fold_path1, date_data,'user')
+        #grant_recursive_rw_permission(directory_path,"agilex","agx") # 不可用
+        #directory_path = os.path.join(fold_path1, "20250630")
+        if not os.path.exists(directory_path):
+            print("数据路径不存在")
+            return  
+        entries = os.listdir(directory_path) # 各任务列表
+        # 筛选出子目录
+        subdirectories = [entry for entry in entries if os.path.isdir(os.path.join(directory_path, entry))] # 仅筛选目录
+        try:
+            for task_data_name in subdirectories: # 1813490901
+                json_object_list = []
+                each_task_path = os.path.join(directory_path,task_data_name)
+                each_common_record_path = os.path.join(each_task_path,"meta","common_record.json")
+                each_opdata_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
 
-            with open(each_opdata_path, 'r', encoding='utf-8') as file:
-                for line in file:
-                    try:
-                        # 去除行末的换行符，并解析为 JSON 对象
-                        json_object_data = json.loads(line.strip())
-                        json_object_list.append(json_object_data)
-                        last_line_json = json_object_data  # 更新最后一行的 JSON 对象
-                    except json.JSONDecodeError as e:
-                        print(f"解析 JSON 失败，行内容: {line.strip()}, 错误信息: {e}")
-            task_number = int(last_line_json["episode_index"]) + 1 # 需要上传的文件数量 # 4
-            
-            with open(each_common_record_path,"r",encoding="utf-8") as f:
-                data = json.load(f)
-                task_id = data["task_id"] # 云平台任务id
-                machine_id = data["machine_id"]
-                task_name = data["task_name"]
-                if "last_upload_id" in data:
-                    last_epid = data['last_upload_id']
-                    if task_number <= last_epid: # 判断当前数据是否新增
-                        print("没有需要上传的数据")
-                        break
-                else:
-                    last_epid = 0
-
-            entries_1 = os.listdir(each_task_path) 
-            subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))] # data video meta
-            
-            timestamp_nas = str(add_random_milliseconds()) # 等待毫秒，造成时间差
-            
-            task_nas_path = os.path.join(nas_path,task_id) # 缓存目录
-            if not nas_auth.check_path_exists(task_nas_path):
-                nas_auth.create_folder(task_nas_path)
-            # if not os.path.exists(task_nas_path):
-            #     os.makedirs(task_nas_path, exist_ok=False) # 创造缓存目录
-
-            task_cache_name = machine_id + "***" + timestamp_nas # 创建缓存排队目录
-            task_cache_nas_path = os.path.join(task_nas_path,task_cache_name)
-            if not nas_auth.check_path_exists(task_cache_nas_path):
-                nas_auth.create_folder(task_cache_nas_path)
-
-            # if not os.path.exists(task_cache_nas_path):
-            #     os.makedirs(task_cache_nas_path, exist_ok=False)
-
-            time.sleep(5) # 等待所有目录创造
-            while True:
-                meta_file_list = []
-                entries_2 = nas_auth.get_directory_structure(task_nas_path)
-                # entries_2 = os.listdir(task_nas_path) 
-                subdirectories_2 = [entry.split("***") for entry in entries_2]
-                # 找到时间戳最小的设备编号
-                min_timestamp_device = min(subdirectories_2, key=lambda x: int(x[1]))[0]
-                print(f"时间戳最小的设备编号是: {min_timestamp_device}")
-                if min_timestamp_device == machine_id: # 轮到自己论次
-                    middle_name = task_name + "_" + task_id
-                    nas_target_path = os.path.join(nas_data_path,middle_name)
-                    nas_meta_file_path = os.path.join(nas_target_path,"meta","op_dataid.jsonl")
-                    local_nas_meta_file_path = os.path.join(directory_path,"op_dataid.jsonl")
-                    if nas_auth.check_file_exists(nas_meta_file_path):
-                        nas_auth.download_file(nas_meta_file_path,local_nas_meta_file_path)
-                    if os.path.exists(local_nas_meta_file_path): # 判断nas上是否有任务数据，有的话先合并json
-                        with open(local_nas_meta_file_path, 'r', encoding='utf-8') as file:
-                            for line in file:
-                                try:
-                                    # 去除行末的换行符，并解析为 JSON 对象
-                                    json_object = json.loads(line.strip())
-                                    last_line_json = json_object  # 更新最后一行的 JSON 对象
-                                except json.JSONDecodeError as e:
-                                    print(f"解析 JSON 失败，行内容: {line.strip()}, 错误信息: {e}")
-                        last_episode_id = int(last_line_json["episode_index"]) + 1 #  nas上的数据id记录
-                        last_episode_id = last_episode_id - last_epid
-
-                        # record_json_path = os.path.join(directory_path,task_id+".json")
-                        # if os.path.exists(record_json_path):
-                        #     with open(record_json_path,"r",encoding="utf-8") as f:
-                        #         data = json.load(f)
-                        #         last_epid = data["episodes_id"] # 当前任务上次上传的记录 
-                        #         last_episode_id = last_episode_id - last_epid
-                        #     if task_number <= last_epid: # 判断当前数据是否新增
-                        #         delete_file([local_nas_meta_file_path])
-                        #         nas_auth.delete_folder(task_cache_nas_path)
-                        #         break
-                        # else:
-                        #     last_epid = 0
-
-                        op_dataid_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
-                        change_number(op_dataid_path,local_nas_meta_file_path,last_episode_id, last_epid) # 增加数据id
-                        meta_file_list.append(local_nas_meta_file_path)
-
-                        local_nas_episodes_path = os.path.join(directory_path,"episodes.jsonl")
-                        nas_episodes_file_path = os.path.join(nas_data_path,middle_name,"meta","episodes.jsonl")
-                        nas_auth.download_file(nas_episodes_file_path,local_nas_episodes_path)
-                        episodes_path = os.path.join(each_task_path,"meta","episodes.jsonl")
-                        change_number(episodes_path,local_nas_episodes_path,last_episode_id,last_epid) # 增加数据id
-                        meta_file_list.append(local_nas_episodes_path)
-
-                         
-                        local_nas_info_path = os.path.join(directory_path,"info.json") # nas上的info.json文件保存到本地的地址
-                        nas_info_file_path = os.path.join(nas_data_path,middle_name,"meta","info.json") # nas上的info.json地址
-                        nas_auth.download_file(nas_info_file_path,local_nas_info_path) #下载nas文件到本地
-                        info_path = os.path.join(each_task_path,"meta","info.json") # 当前任务的info.json文件地址
-                        change_number_info(info_path,local_nas_info_path,episodes_path,last_epid,task_number) # 修改info.json的统计数据
-                        meta_file_list.append(local_nas_info_path) # 将下载到本地的info.json加入删除名单
-                        
-                        
-                        local_episodes_stats_path = os.path.join(directory_path,"episodes_stats.jsonl")
-                        nas_episodes_stats_file_path = os.path.join(nas_data_path,middle_name,"meta","episodes_stats.jsonl")
-                        nas_auth.download_file(nas_episodes_stats_file_path,local_episodes_stats_path)
-                        episodes_stats_path = os.path.join(each_task_path,"meta","episodes_stats.jsonl")           
-                        change_number(episodes_stats_path,local_episodes_stats_path,last_episode_id,last_epid) # 增加数据id
-                        meta_file_list.append(local_episodes_stats_path)
-                        
-                        
-                        for data_id in range(last_epid,task_number):
-                            cloud_data_id = json_object_list[data_id]["dataid"]
-                            local_file_list = []
-                            nas_file_list = []
-                            for task_part in subdirectories_1:
-                                if task_part == "meta":
-                                    if data_id == last_epid:
-                                        local_file_list.extend([local_nas_info_path, local_nas_meta_file_path,local_nas_episodes_path,local_episodes_stats_path])
-                                        nas_file_list.extend([nas_info_file_path,nas_meta_file_path,nas_episodes_file_path,nas_episodes_stats_file_path])
-                                else:
-                                    fold_path = os.path.join(each_task_path,task_part,"chunk-000")
-                                    local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,last_episode_id,task_data_name,middle_name,0)
-                                    if isinstance(local_file, str):
-                                        local_file_list.append(local_file)
-                                        nas_file_list.append(nas_file)
-                                    elif isinstance(local_file,list):
-                                        local_file_list.extend(local_file)
-                                        nas_file_list.extend(nas_file)
-                            
-                            #print(local_file_list)
-                            #print(nas_file_list)
-                            task_msg = {
-                                "task_id":int(task_id),
-                                "task_data_id":int(cloud_data_id),
-                                "source_path":each_task_path,
-                                "target_path":str(nas_file_list)
-                            }
-                            #copy_files(local_file_list,nas_file_list) # nas_auth.upload()
-                            nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
-                        #delete_directory(task_cache_nas_path)
-                        delete_file(meta_file_list)  
-                        nas_auth.delete_folder(task_cache_nas_path)
-                        modify_json(each_common_record_path,task_number)
-                        break
+                with open(each_opdata_path, 'r', encoding='utf-8') as file:
+                    for line in file:
+                        try:
+                            # 去除行末的换行符，并解析为 JSON 对象
+                            json_object_data = json.loads(line.strip())
+                            json_object_list.append(json_object_data)
+                            last_line_json = json_object_data  # 更新最后一行的 JSON 对象
+                        except json.JSONDecodeError as e:
+                            print(f"解析 JSON 失败，行内容: {line.strip()}, 错误信息: {e}")
+                task_number = int(last_line_json["episode_index"]) + 1 # 需要上传的文件数量 # 4
+                
+                with open(each_common_record_path,"r",encoding="utf-8") as f:
+                    data = json.load(f)
+                    task_id = data["task_id"] # 云平台任务id
+                    machine_id = data["machine_id"]
+                    task_name = data["task_name"]
+                    if "last_upload_id" in data:
+                        last_epid = data['last_upload_id']
+                        if task_number <= last_epid: # 判断当前数据是否新增
+                            print("没有需要上传的数据")
+                            continue
                     else:
-                        for data_id in range(task_number): # 遍历任务数量
-                            cloud_data_id = json_object_list[data_id]["dataid"]
-                            local_file_list = []
-                            nas_file_list = []
-                            for task_part in subdirectories_1:
-                                if task_part == "meta":
-                                    if data_id == 0:
-                                        fold_path = os.path.join(each_task_path,task_part)
-                                        local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,0,task_data_name,middle_name,1)
+                        last_epid = 0
+
+                entries_1 = os.listdir(each_task_path) 
+                subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))] # data video meta
+                
+                timestamp_nas = str(add_random_milliseconds()) # 等待毫秒，造成时间差
+                
+                task_nas_path = os.path.join(nas_path,task_id) # 缓存目录
+                if not nas_auth.check_path_exists(task_nas_path):
+                    nas_auth.create_folder(task_nas_path)
+                # if not os.path.exists(task_nas_path):
+                #     os.makedirs(task_nas_path, exist_ok=False) # 创造缓存目录
+
+                task_cache_name = machine_id + "***" + timestamp_nas # 创建缓存排队目录
+                task_cache_nas_path = os.path.join(task_nas_path,task_cache_name)
+                if not nas_auth.check_path_exists(task_cache_nas_path):
+                    nas_auth.create_folder(task_cache_nas_path)
+
+                # if not os.path.exists(task_cache_nas_path):
+                #     os.makedirs(task_cache_nas_path, exist_ok=False)
+
+                time.sleep(5) # 等待所有目录创造
+                while True:
+                    meta_file_list = []
+                    entries_2 = nas_auth.get_directory_structure(task_nas_path)
+                    # entries_2 = os.listdir(task_nas_path) 
+                    subdirectories_2 = [entry.split("***") for entry in entries_2]
+                    # 找到时间戳最小的设备编号
+                    min_timestamp_device = min(subdirectories_2, key=lambda x: int(x[1]))[0]
+                    print(f"时间戳最小的设备编号是: {min_timestamp_device}")
+                    if min_timestamp_device == machine_id: # 轮到自己论次
+                        middle_name = task_name + "_" + task_id
+                        nas_target_path = os.path.join(nas_data_path,middle_name)
+                        nas_meta_file_path = os.path.join(nas_target_path,"meta","op_dataid.jsonl")
+                        local_nas_meta_file_path = os.path.join(directory_path,"op_dataid.jsonl")
+                        if nas_auth.check_file_exists(nas_meta_file_path):
+                            nas_auth.download_file(nas_meta_file_path,local_nas_meta_file_path)
+                        if os.path.exists(local_nas_meta_file_path): # 判断nas上是否有任务数据，有的话先合并json
+                            with open(local_nas_meta_file_path, 'r', encoding='utf-8') as file:
+                                for line in file:
+                                    try:
+                                        # 去除行末的换行符，并解析为 JSON 对象
+                                        json_object = json.loads(line.strip())
+                                        last_line_json = json_object  # 更新最后一行的 JSON 对象
+                                    except json.JSONDecodeError as e:
+                                        print(f"解析 JSON 失败，行内容: {line.strip()}, 错误信息: {e}")
+                            last_episode_id = int(last_line_json["episode_index"]) + 1 #  nas上的数据id记录
+                            last_episode_id = last_episode_id - last_epid
+
+                            # record_json_path = os.path.join(directory_path,task_id+".json")
+                            # if os.path.exists(record_json_path):
+                            #     with open(record_json_path,"r",encoding="utf-8") as f:
+                            #         data = json.load(f)
+                            #         last_epid = data["episodes_id"] # 当前任务上次上传的记录 
+                            #         last_episode_id = last_episode_id - last_epid
+                            #     if task_number <= last_epid: # 判断当前数据是否新增
+                            #         delete_file([local_nas_meta_file_path])
+                            #         nas_auth.delete_folder(task_cache_nas_path)
+                            #         break
+                            # else:
+                            #     last_epid = 0
+
+                            op_dataid_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
+                            change_number(op_dataid_path,local_nas_meta_file_path,last_episode_id, last_epid) # 增加数据id
+                            meta_file_list.append(local_nas_meta_file_path)
+
+                            local_nas_episodes_path = os.path.join(directory_path,"episodes.jsonl")
+                            nas_episodes_file_path = os.path.join(nas_data_path,middle_name,"meta","episodes.jsonl")
+                            nas_auth.download_file(nas_episodes_file_path,local_nas_episodes_path)
+                            episodes_path = os.path.join(each_task_path,"meta","episodes.jsonl")
+                            change_number(episodes_path,local_nas_episodes_path,last_episode_id,last_epid) # 增加数据id
+                            meta_file_list.append(local_nas_episodes_path)
+
+                            
+                            local_nas_info_path = os.path.join(directory_path,"info.json") # nas上的info.json文件保存到本地的地址
+                            nas_info_file_path = os.path.join(nas_data_path,middle_name,"meta","info.json") # nas上的info.json地址
+                            nas_auth.download_file(nas_info_file_path,local_nas_info_path) #下载nas文件到本地
+                            info_path = os.path.join(each_task_path,"meta","info.json") # 当前任务的info.json文件地址
+                            change_number_info(info_path,local_nas_info_path,episodes_path,last_epid,task_number) # 修改info.json的统计数据
+                            meta_file_list.append(local_nas_info_path) # 将下载到本地的info.json加入删除名单
+                            
+                            
+                            local_episodes_stats_path = os.path.join(directory_path,"episodes_stats.jsonl")
+                            nas_episodes_stats_file_path = os.path.join(nas_data_path,middle_name,"meta","episodes_stats.jsonl")
+                            nas_auth.download_file(nas_episodes_stats_file_path,local_episodes_stats_path)
+                            episodes_stats_path = os.path.join(each_task_path,"meta","episodes_stats.jsonl")           
+                            change_number(episodes_stats_path,local_episodes_stats_path,last_episode_id,last_epid) # 增加数据id
+                            meta_file_list.append(local_episodes_stats_path)
+                            
+                            
+                            for data_id in range(last_epid,task_number):
+                                cloud_data_id = json_object_list[data_id]["dataid"]
+                                local_file_list = []
+                                nas_file_list = []
+                                for task_part in subdirectories_1:
+                                    if task_part == "meta":
+                                        if data_id == last_epid:
+                                            local_file_list.extend([local_nas_info_path, local_nas_meta_file_path,local_nas_episodes_path,local_episodes_stats_path])
+                                            nas_file_list.extend([nas_info_file_path,nas_meta_file_path,nas_episodes_file_path,nas_episodes_stats_file_path])
+                                    else:
+                                        fold_path = os.path.join(each_task_path,task_part,"chunk-000")
+                                        local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,last_episode_id,task_data_name,middle_name,0)
                                         if isinstance(local_file, str):
                                             local_file_list.append(local_file)
                                             nas_file_list.append(nas_file)
                                         elif isinstance(local_file,list):
                                             local_file_list.extend(local_file)
                                             nas_file_list.extend(nas_file)
-                                else:
-                                    fold_path = os.path.join(each_task_path,task_part,"chunk-000")
-                                    local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,0,task_data_name,middle_name,0)
-                                    if isinstance(local_file, str):
-                                        local_file_list.append(local_file)
-                                        nas_file_list.append(nas_file)
-                                    elif isinstance(local_file,list):
-                                        local_file_list.extend(local_file)
-                                        nas_file_list.extend(nas_file)    
-                            #print(local_file_list)
-                            #print(nas_file_list)
-                            task_msg = {
-                                "task_id":int(task_id),
-                                "task_data_id":int(cloud_data_id),
-                                "source_path":each_task_path,
-                                "target_path":str(nas_file_list)
-                            }
-                            #copy_files(local_file_list,nas_file_list) 
-                            nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
-                        nas_auth.delete_folder(task_cache_nas_path)
-                        modify_json(each_common_record_path,task_number)
-                        break
-                else:
-                    time.sleep(10)
-    except Exception as e:
-        print(str(e))
+                                
+                                #print(local_file_list)
+                                #print(nas_file_list)
+                                task_msg = {
+                                    "task_id":int(task_id),
+                                    "task_data_id":int(cloud_data_id),
+                                    "source_path":each_task_path,
+                                    "target_path":str(nas_file_list)
+                                }
+                                #copy_files(local_file_list,nas_file_list) # nas_auth.upload()
+                                nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
+                            #delete_directory(task_cache_nas_path)
+                            delete_file(meta_file_list)  
+                            nas_auth.delete_folder(task_cache_nas_path)
+                            modify_json(each_common_record_path,task_number)
+                            break
+                        else:
+                            for data_id in range(task_number): # 遍历任务数量
+                                cloud_data_id = json_object_list[data_id]["dataid"]
+                                local_file_list = []
+                                nas_file_list = []
+                                for task_part in subdirectories_1:
+                                    if task_part == "meta":
+                                        if data_id == 0:
+                                            fold_path = os.path.join(each_task_path,task_part)
+                                            local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,0,task_data_name,middle_name,1)
+                                            if isinstance(local_file, str):
+                                                local_file_list.append(local_file)
+                                                nas_file_list.append(nas_file)
+                                            elif isinstance(local_file,list):
+                                                local_file_list.extend(local_file)
+                                                nas_file_list.extend(nas_file)
+                                    else:
+                                        fold_path = os.path.join(each_task_path,task_part,"chunk-000")
+                                        local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,0,task_data_name,middle_name,0)
+                                        if isinstance(local_file, str):
+                                            local_file_list.append(local_file)
+                                            nas_file_list.append(nas_file)
+                                        elif isinstance(local_file,list):
+                                            local_file_list.extend(local_file)
+                                            nas_file_list.extend(nas_file)    
+                                #print(local_file_list)
+                                #print(nas_file_list)
+                                task_msg = {
+                                    "task_id":int(task_id),
+                                    "task_data_id":int(cloud_data_id),
+                                    "source_path":each_task_path,
+                                    "target_path":str(nas_file_list)
+                                }
+                                #copy_files(local_file_list,nas_file_list) 
+                                nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
+                            nas_auth.delete_folder(task_cache_nas_path)
+                            modify_json(each_common_record_path,task_number)
+                            break
+                    else:
+                        time.sleep(10)
+        except Exception as e:
+            print(str(e))
 
 def test():
     nas_auth.test()

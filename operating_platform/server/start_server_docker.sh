@@ -15,26 +15,21 @@ VOLUMES="-v /home/${CURRENT_USER}/Documents/Operating-Platform/:/home/agilex/Doc
 VOLUMES2="-v /home/${CURRENT_USER}/Documents/server/release/Operating-Platform/operating_platform/server/:/app/code/"
 
 # ====================== 逻辑部分（无需修改） ======================
-# 检查镜像是否存在，不存在则拉取
-if ! docker images --format "{{.Repository}}" | grep -q "^${IMAGE_NAME}$"; then
-    echo "镜像 '${IMAGE_NAME}' 不存在，正在拉取..."
-    docker pull ${IMAGE_NAME}
-fi
 
 # 检查容器是否存在
-if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+if sudo docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     # 容器存在，检查是否正在运行
-    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    if sudo docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
         echo "容器 '${CONTAINER_NAME}' 已经在运行，无需操作。"
     else
         # 容器存在但未运行，启动它
         echo "启动已存在的容器 '${CONTAINER_NAME}'..."
-        docker start ${CONTAINER_NAME}
+        sudo docker start ${CONTAINER_NAME}
     fi
 else
     # 容器不存在，创建并运行
     echo "创建并启动新容器 '${CONTAINER_NAME}'..."
-    docker run -d \
+    sudo docker run -d \
         --name ${CONTAINER_NAME} \
         ${PRIVILEGED} \
         ${RESTART_POLICY} \
@@ -46,4 +41,4 @@ fi
 
 # 检查容器状态
 echo "当前容器状态："
-docker ps -a --filter "name=${CONTAINER_NAME}" --format 'table {{.Names}}\t{{.Status}}'
+sudo docker ps -a --filter "name=${CONTAINER_NAME}" --format 'table {{.Names}}\t{{.Status}}'
