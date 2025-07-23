@@ -13,6 +13,7 @@ CURRENT_USER=$(whoami)  # 或使用 $USER
 # 动态构建卷挂载路径（替换原硬编码的 "agilex"）
 VOLUMES="-v /home/${CURRENT_USER}/Documents/Operating-Platform/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/"
 VOLUMES2="-v /home/${CURRENT_USER}/Documents/server/release/Operating-Platform/operating_platform/server/:/app/code/"
+VOLUMES3="-v /home/${CURRENT_USER}/.config/:/home/machine/.config/"
 
 # ====================== 逻辑部分（无需修改） ======================
 
@@ -36,6 +37,7 @@ else
         ${PORTS} \
         ${VOLUMES} \
         ${VOLUMES2} \
+        ${VOLUMES3} \
         ${IMAGE_NAME}
 fi
 

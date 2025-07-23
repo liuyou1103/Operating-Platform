@@ -235,7 +235,7 @@ def get_nth_file_in_subdirectories(fold_path, m, n=0, task=0,middle_name=None,me
             nas_file_list.append(nas_final_path)
         return file_list, nas_file_list  
 
-def change_number(task_path, nas_meta_file_path, n, m):
+def change_number(task_path, nas_meta_file_path, n, m,end_line):
     json_objects = []
     with open(task_path, 'r', encoding='utf-8') as file:
         # 跳过前 m 行
@@ -243,7 +243,11 @@ def change_number(task_path, nas_meta_file_path, n, m):
             next(file, None)  # 使用 next() 跳过 m 行
  
         # 处理剩余的行
-        for line in file:
+         # 遍历剩余行，筛选指定范围
+        for current_line, line in enumerate(file):
+            # 检查是否在目标行范围内
+            if current_line + m >= end_line:
+                break
             try:
                 # 去除行末的换行符，并解析为 JSON 对象
                 json_object = json.loads(line.strip())
@@ -266,7 +270,10 @@ def change_number_info(task_path, nas_meta_file_path,frame_path,m,n):
             next(file, None)  # 使用 next() 跳过 m 行
  
         # 处理剩余的行
-        for line in file:
+        for current_line, line in enumerate(file):
+            # 检查是否在目标行范围内
+            if current_line + m >= n:
+                break
             try:
                 # 去除行末的换行符，并解析为 JSON 对象
                 json_object = json.loads(line.strip())
@@ -454,14 +461,14 @@ def upload():
                             #     last_epid = 0
 
                             op_dataid_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
-                            change_number(op_dataid_path,local_nas_meta_file_path,last_episode_id, last_epid) # 增加数据id
+                            change_number(op_dataid_path,local_nas_meta_file_path,last_episode_id, last_epid,task_number) # 增加数据id
                             meta_file_list.append(local_nas_meta_file_path)
 
                             local_nas_episodes_path = os.path.join(directory_path,"episodes.jsonl")
                             nas_episodes_file_path = os.path.join(nas_data_path,middle_name,"meta","episodes.jsonl")
                             nas_auth.download_file(nas_episodes_file_path,local_nas_episodes_path)
                             episodes_path = os.path.join(each_task_path,"meta","episodes.jsonl")
-                            change_number(episodes_path,local_nas_episodes_path,last_episode_id,last_epid) # 增加数据id
+                            change_number(episodes_path,local_nas_episodes_path,last_episode_id,last_epid,task_number) # 增加数据id
                             meta_file_list.append(local_nas_episodes_path)
 
                             
@@ -477,7 +484,7 @@ def upload():
                             nas_episodes_stats_file_path = os.path.join(nas_data_path,middle_name,"meta","episodes_stats.jsonl")
                             nas_auth.download_file(nas_episodes_stats_file_path,local_episodes_stats_path)
                             episodes_stats_path = os.path.join(each_task_path,"meta","episodes_stats.jsonl")           
-                            change_number(episodes_stats_path,local_episodes_stats_path,last_episode_id,last_epid) # 增加数据id
+                            change_number(episodes_stats_path,local_episodes_stats_path,last_episode_id,last_epid,task_number) # 增加数据id
                             meta_file_list.append(local_episodes_stats_path)
                             
                             

@@ -17,8 +17,10 @@ import schedule
 import requests
 import json
 import upload_to_nas
+import uuid
 
 MACHINE_ID_FILE = './machine_id.txt'
+MACHINE_ID_PATH = '/home/machine/.config/baai_platform/baai_server_machine_id'
 
 class VideoStream:
     def __init__(self, stream_id, stream_name):
@@ -134,6 +136,69 @@ class FlaskServer:
         
         # 注册路由
         self.register_routes()
+
+
+    # ---------------------------------生成设备ID---------------------------------------------
+    def get_address(self):
+        # """获取 MAC 地址（格式：A1B2C3D4E5F6）"""
+        # mac = uuid.getnode()
+        # mac_hex = '{:012X}'.format(mac)  # 12 位大写十六进制
+        # return mac_hex
+        """生成随机唯一标识（不依赖硬件）"""
+        return uuid.uuid4().hex.upper()[:12]
+    
+    def generate_machine_id(self):
+        """生成机器 ID（MAC地址_aloha）"""
+        mac = self.get_address()
+        return f"{mac}_aloha"  # 格式：A1B2C3D4E5F6_aloha
+    
+    def save_machine_id(self,machine_id):
+        """保存机器 ID 到"""
+        try:
+            os.makedirs(os.path.dirname(MACHINE_ID_PATH), exist_ok=True)  # 确保目录存在
+            with open(MACHINE_ID_PATH, "w") as f:
+                f.write(machine_id)
+            logging.info(f"机器 ID 已保存到 {MACHINE_ID_PATH}")
+            return True
+        except Exception as e:
+            logging.error(f"保存机器 ID 失败: {e}")
+            return False
+    
+    def load_machine_id(self):
+        """读取机器 ID"""
+        if not os.path.exists(MACHINE_ID_PATH):
+            logging.info("未找到机器 ID 文件，将生成新 ID")
+            return None
+        try:
+            with open(MACHINE_ID_PATH, "r") as f:
+                machine_id = f.read().strip()
+                logging.info(f"已加载机器 ID: {machine_id}")
+                return machine_id
+        except Exception as e:
+            logging.error(f"读取机器 ID 失败: {e}")
+            return None
+    
+    def get_or_create_machine_id(self):
+        """主逻辑：检查是否存在，不存在则生成并保存"""
+        # 1. 尝试读取现有 ID
+        machine_id = self.load_machine_id()
+        if machine_id:
+            return machine_id
+        try:
+            # 2. 不存在则生成新 ID
+            logging.info("未找到机器 ID，正在生成...")
+            machine_id = self.generate_machine_id()
+            logging.info(f"生成的机器 ID: {machine_id}")
+        
+            # 3. 保存到用户目录
+            if self.save_machine_id(machine_id):
+                return machine_id
+            else:
+                logging.warning("警告：无法保存机器 ID")
+                return get_machine_id()
+        except Exception as e:
+            logging.error(f"未知错误，无法生成机器 ID: {e}")
+            return get_machine_id()
     
     # --------------------------------定时任务-------------------------------------------------
     def login(self):
@@ -501,10 +566,9 @@ class FlaskServer:
             data = request.get_json()
             logging.debug(f"[API] start_collection - 请求数据: {data}")
             
-            data['machine_id'] = get_machine_id()
+            data['machine_id'] = self.get_or_create_machine_id()
             self.task_steps = data
             now_time = time.time()
-            
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'start_collection', 'msg': data})
             
             while True:
