@@ -566,7 +566,7 @@ class FlaskServer:
             data = request.get_json()
             logging.debug(f"[API] start_collection - 请求数据: {data}")
             
-            data['machine_id'] = self.get_or_create_machine_id()
+            data['machine_id'] = get_machine_id()
             self.task_steps = data
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'start_collection', 'msg': data})
