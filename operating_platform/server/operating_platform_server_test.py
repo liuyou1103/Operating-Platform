@@ -273,8 +273,8 @@ class FlaskServer:
             logging.error("[Task] local_to_nas - 任务执行失败，登录不成功")
 
     def time_job(self):
-        schedule.every().day.at("22:00").do(self.local_to_nas)
-        logging.info("[Task] time_job - 定时任务已启动，每天22:00执行...")
+        schedule.every().day.at("14:00").do(self.local_to_nas)
+        logging.info("[Task] time_job - 定时任务已启动，每天23:00执行...")
         try:
             while True:
                 schedule.run_pending()
@@ -760,7 +760,7 @@ class FlaskServer:
                 if self.upload_nas_flag:
                     logging.warning("[API] manual_upload_nas - 数据上传中")
                     response_data = {
-                        "code": 401,
+                        "code": 601,
                         "data": {},
                         "msg": '数据上传中'
                     }
@@ -770,9 +770,18 @@ class FlaskServer:
                     if not upload_to_nas.nas_auth.get_auth_sid():
                         logging.error("[API] manual_upload_nas - 连接NAS异常")
                         response_data = {
-                            "code": 401,
+                            "code": 601,
                             "data": {},
                             "msg": '连接nas异常'
+                        }
+                        self.upload_nas_flag = False
+                        return jsonify(response_data), 200
+                    if not self.login():
+                        logging.error("[API] manual_upload_nas -网络异常")
+                        response_data = {
+                            "code": 601,
+                            "data": {},
+                            "msg": '网络异常'
                         }
                         self.upload_nas_flag = False
                         return jsonify(response_data), 200

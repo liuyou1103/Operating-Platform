@@ -497,7 +497,7 @@ def upload():
                                         if data_id == last_epid:
                                             local_file_list.extend([local_nas_info_path, local_nas_meta_file_path,local_nas_episodes_path,local_episodes_stats_path])
                                             nas_file_list.extend([nas_info_file_path,nas_meta_file_path,nas_episodes_file_path,nas_episodes_stats_file_path])
-                                    elif task_part == "data" or task_part == "vedio":
+                                    elif task_part == "data" or task_part == "videos":
                                         fold_path = os.path.join(each_task_path,task_part,"chunk-000")
                                         local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,last_episode_id,task_data_name,middle_name,0)
                                         if isinstance(local_file, str):
@@ -538,7 +538,7 @@ def upload():
                                             elif isinstance(local_file,list):
                                                 local_file_list.extend(local_file)
                                                 nas_file_list.extend(nas_file)
-                                    elif task_part == "data" or task_part == "vedio":
+                                    elif task_part == "data" or task_part == "videos":
                                         fold_path = os.path.join(each_task_path,task_part,"chunk-000")
                                         local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,0,task_data_name,middle_name,0)
                                         if isinstance(local_file, str):
