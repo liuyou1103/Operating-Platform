@@ -8,8 +8,42 @@ import os
 import json
 import subprocess
 from pathlib import Path
+import requests
  
 fold_path = "/home/agilex/Documents/Ryu-Yang/Operating-Platform/dataset/"
+server_url="http://localhost:8080"
+session = requests.Session()
+
+def local_server_request(api_url,data):
+    response = session.post(
+        f"{server_url}/{api_url}",
+        json=data
+    )
+    
+def local_server_task_id_request(task_id):
+    data = {
+        "machine_id":str(task_id)
+    }
+    response = session.post(
+        f"{server_url}/api/upload_task_id",
+        json=data
+    )
+    
+def read_common_record_json(each_task_path):
+    each_common_record_path = os.path.join(each_task_path,'meta','common_record.json')
+    with open(each_common_record_path,"r",encoding="utf-8") as f:
+        data = json.load(f)
+        task_id = data["task_id"] # 云平台任务id
+        machine_id = data["machine_id"]
+        task_name = data["task_name"]
+    return task_id,task_name,machine_id
+
+def read_info_json(each_task_path):
+    each_info_path = os.path.join(each_task_path,'meta','info.json')
+    with open(each_info_path,"r",encoding="utf-8") as f:
+        data = json.load(f)
+        fps = data["fps"] # fps      
+    return fps
 
 def encode_video_frames(
     imgs_dir: Path | str,
@@ -154,21 +188,28 @@ def encode_and_upload():
                 each_task_path = os.path.join(directory_path,task_data_name)
                 entries_1 = os.listdir(each_task_path) 
                 subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))] # data images videos meta
-                for task_part in subdirectories_1:
-                    if task_part == "images":
-                        each_images_path = os.path.join(each_task_path,task_data_name)
-                        entries_2 = os.listdir(each_images_path)
-                        subdirectories_2 = [entry for entry in entries_2 if os.path.isdir(os.path.join(each_images_path, entry))] # images.top/left/right
-                        for camera_images in subdirectories_2:
-                            if not ffmpeg_encode(camera_images):
-                                ffmpeg_encode_flag = False
+                camera_save_folder = 'images'
+                if camera_save_folder in subdirectories_1:
+                    task_id,task_name,machine_id = read_common_record_json(each_task_path)
+                    fps = read_info_json(each_task_path)
+                    local_server_task_id_request(task_id)
+                    
+                    each_images_path = os.path.join(each_task_path,camera_save_folder)
+                    entries_2 = os.listdir(each_images_path)
+                    for camera_images in entries_2:
+                        camera_images_path = os.path.join(each_images_path, camera_images)
+                        if os.path.isdir(camera_images_path):
+                            # 如果是目录，执行某些操作
+                            print(f"{camera_images_path} 是一个目录")
+                            if 'depth' in camera_images:
+                                if not encode_depth_video_frames()
+                                    ffmpeg_encode_flag = False
+                            else:
+                                if not encode_video_frames():
+                                    ffmpeg_encode_flag = False
+                                    
                 if ffmpeg_encode_flag:
-                    each_common_record_path = os.path.join(each_task_path,'meta','common_record.json')
-                    with open(each_common_record_path,"r",encoding="utf-8") as f:
-                        data = json.load(f)
-                        task_id = data["task_id"] # 云平台任务id
-                        machine_id = data["machine_id"]
-                        task_name = data["task_name"]
+                    
                     upload(each_task_path)
         except Exception as e:
             print(str(e))

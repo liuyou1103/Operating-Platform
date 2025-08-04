@@ -113,7 +113,7 @@ class FlaskServer:
         self.machine_information = None
         self.upload_thread = threading.Thread(target=self.time_job, daemon=True)
         self.upload_nas_flag = False
-        self.upload_ks3_flag = False
+        self.upload_ks3_id = '0'
         
         # 响应模板
         self.response_start_collection = {
@@ -380,7 +380,9 @@ class FlaskServer:
         self.app.add_url_rule('/api/upload_fail', 'upload_fail', self.upload_fail, methods=['POST'])
         self.app.add_url_rule('/api/upload_process', 'upload_process', self.upload_process, methods=['POST'])
        
-        
+        # ks3反馈接口
+        self.app.add_url_rule('/api/upload_task_id', 'upload_task_id', self.upload_task_id, methods=['POST'])
+    
         # 机器人接口
         self.app.add_url_rule('/robot/update_stream/<stream_id>', 'update_frame', self.update_frame, methods=['POST'])
         self.app.add_url_rule('/robot/stream_info', 'robot_get_video_list', self.robot_get_video_list, methods=['POST'])
@@ -617,11 +619,11 @@ class FlaskServer:
             logging.info("[API] start_collection - 开始采集请求")
             data = request.get_json()
             logging.debug(f"[API] start_collection - 请求数据: {data}")
-            if self.upload_ks3_flag:
+            if self.upload_ks3_id == str(data['task_id']):
                 response_data = {
                             "code": 404,
                             "data": {},
-                            "msg": '数据上传中，请勿采集'
+                            "msg": '该任务数据上传中，请勿采集'
                         }
                 return jsonify(response_data), 200
                 
@@ -937,6 +939,17 @@ class FlaskServer:
             return jsonify({}), 200
         except Exception as e:
             logging.error(f"[API Error] upload_process - 异常: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        
+    def upload_task_id(self):
+        try:
+            logging.info("[API] upload_task_id - 上传id通知")
+            data = request.get_json()
+            logging.debug(f"[API] upload_task_id - 请求数据: {data}")
+            self.upload_ks3_id  = data['task_id']
+            return jsonify({}), 200
+        except Exception as e:
+            logging.error(f"[API Error] upload_task_id - 异常: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
     # ---------------------------------------robot------------------------------------------------
