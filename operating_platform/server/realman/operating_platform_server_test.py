@@ -19,8 +19,10 @@ import json
 import upload_to_nas
 import uuid
 
-MACHINE_ID_FILE = './machine_id.txt'
-MACHINE_ID_PATH = '/home/machine/.config/baai_platform/baai_server_machine_id'
+
+MACHINE_ID_PATH = '/home/machine/.config/baai_platform/machine_code'
+UNIQUE_CODE_PATH = '/home/machine/.config/baai_platform/unique_code'
+
 
 class VideoStream:
     def __init__(self, stream_id, stream_name):
@@ -79,11 +81,7 @@ class VideoStream:
 
  
 def get_machine_id():
-    if os.path.exists(MACHINE_ID_FILE):
-        with open(MACHINE_ID_FILE, 'r') as f:
-            return f.read().strip()
-    else:
-        return "BAAI_AX_AL_001"
+    return "BAAI_AX_AL_001"
 
 
 class FlaskServer:
@@ -112,6 +110,7 @@ class FlaskServer:
         self.upload_lock = threading.Lock()  # 用于保护 self.upload_nas_flag 的访问
         self.init_streams_flag = False
         self.task_steps = {}
+        self.machine_information = None
         self.upload_thread = threading.Thread(target=self.time_job, daemon=True)
         self.upload_nas_flag = False
         
@@ -139,29 +138,33 @@ class FlaskServer:
 
 
     # ---------------------------------生成设备ID---------------------------------------------
-    def get_address(self):
+    def get_unique_code(self):
         # """获取 MAC 地址（格式：A1B2C3D4E5F6）"""
         # mac = uuid.getnode()
         # mac_hex = '{:012X}'.format(mac)  # 12 位大写十六进制
         # return mac_hex
         """生成随机唯一标识（不依赖硬件）"""
-        return uuid.uuid4().hex.upper()[:12]
+        return uuid.uuid4()
     
     def generate_machine_id(self):
         """生成机器 ID（MAC地址_aloha）"""
         mac = self.get_address()
         return f"{mac}_aloha"  # 格式：A1B2C3D4E5F6_aloha
     
-    def save_machine_id(self,machine_id):
-        """保存机器 ID 到"""
+    def save_machine_platform_id(self,machine_id,unique_code):
+        """保存ID 到"""
         try:
             os.makedirs(os.path.dirname(MACHINE_ID_PATH), exist_ok=True)  # 确保目录存在
             with open(MACHINE_ID_PATH, "w") as f:
                 f.write(machine_id)
+            os.makedirs(os.path.dirname(UNIQUE_CODE_PATH), exist_ok=True)  # 确保目录存在
+            with open(UNIQUE_CODE_PATH, "w") as f:
+                f.write(unique_code)
             logging.info(f"机器 ID 已保存到 {MACHINE_ID_PATH}")
+            logging.info(f"标识码 ID 已保存到 {UNIQUE_CODE_PATH}")
             return True
         except Exception as e:
-            logging.error(f"保存机器 ID 失败: {e}")
+            logging.error(f"保存 ID 失败: {e}")
             return False
     
     def load_machine_id(self):
@@ -172,33 +175,26 @@ class FlaskServer:
         try:
             with open(MACHINE_ID_PATH, "r") as f:
                 machine_id = f.read().strip()
-                logging.info(f"已加载机器 ID: {machine_id}")
+                logging.info(f"已加载机器 ID")
                 return machine_id
         except Exception as e:
             logging.error(f"读取机器 ID 失败: {e}")
             return None
-    
-    def get_or_create_machine_id(self):
-        """主逻辑：检查是否存在，不存在则生成并保存"""
-        # 1. 尝试读取现有 ID
-        machine_id = self.load_machine_id()
-        if machine_id:
-            return machine_id
-        try:
-            # 2. 不存在则生成新 ID
-            logging.info("未找到机器 ID，正在生成...")
-            machine_id = self.generate_machine_id()
-            logging.info(f"生成的机器 ID: {machine_id}")
         
-            # 3. 保存到用户目录
-            if self.save_machine_id(machine_id):
-                return machine_id
-            else:
-                logging.warning("警告：无法保存机器 ID")
-                return get_machine_id()
+    def load_unique_code(self):
+        """读取标识 ID"""
+        if not os.path.exists(UNIQUE_CODE_PATH):
+            logging.info("未找到标识码 文件")
+            return None
+        try:
+            with open(UNIQUE_CODE_PATH, "r") as f:
+                unique_code = f.read().strip()
+                logging.info(f"已加载标识码 ID")
+                return unique_code
         except Exception as e:
-            logging.error(f"未知错误，无法生成机器 ID: {e}")
-            return get_machine_id()
+            logging.error(f"读取标识码 失败: {e}")
+            return None
+
     
     # --------------------------------定时任务-------------------------------------------------
     def login(self):
@@ -281,7 +277,8 @@ class FlaskServer:
                 time.sleep(60)
         except KeyboardInterrupt:
             logging.info("[Task] time_job - 定时任务已停止")
-    
+
+    #---------------------------初始化---------------------------------------------------------   
     def init_logging(self):
         """初始化日志配置"""
         now = datetime.datetime.now()
@@ -302,7 +299,60 @@ class FlaskServer:
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         console_handler.setFormatter(formatter)
         logging.getLogger('').addHandler(console_handler)
-    
+
+    def register_machine(self,unique_code):
+        data = {
+            'device_type':'realman',
+            'unique_code':unique_code
+        }
+        response_data = self.make_request_with_token('eai/device/register', data)
+        if response_data:
+            machine_id = response_data['data']['device_id']
+            if self.save_machine_platform_id(machine_id,unique_code):
+                return machine_id
+
+
+    def init_or_get_machine_id(self):
+        if self.login():
+            """主逻辑：检查是否存在，不存在则生成并保存"""
+            # 1. 尝试读取现有 ID
+            machine_id = self.load_machine_id()
+            if machine_id:
+                return machine_id
+            try:
+                # 2.尝试读取标识文件
+                unique_code = self.load_unique_code()
+                if unique_code:
+                    # 依据标识码获取机器编码
+                    machine_id = self.register_machine(unique_code)
+                    if machine_id:
+                        return machine_id
+                # 3. 都不存在则生成新 ID
+                logging.info("未找到机器 ID，正在生成...")
+                unique_code = self.get_unique_code()
+                machine_id = self.register_machine(unique_code)
+                if machine_id:
+                    logging.info(f"生成的机器 ID")
+                    return machine_id
+            except Exception as e:
+                logging.error(f"未知错误，无法生成机器 ID: {e}")
+                return get_machine_id()
+            
+    def update_machine_information_to_platform(self):
+        try:
+            if self.machine_information:
+                data = {
+                    "device_id": self.init_or_get_machine_id(),
+                    "unique_code": self.load_unique_code(),
+                    "device_information": self.machine_information
+                }
+                response_data = self.make_request_with_token('eai/device/update_device_information', data)
+            else:
+                return 
+        except Exception as e:
+            logging.error(f"未知错误，无法更新机器信息: {e}")
+
+
     def register_routes(self):
         """注册所有路由"""
         # 系统信息
@@ -335,6 +385,7 @@ class FlaskServer:
         self.app.add_url_rule('/robot/stream_info', 'robot_get_video_list', self.robot_get_video_list, methods=['POST'])
         self.app.add_url_rule('/robot/response', 'robot_response', self.robot_response, methods=['POST'])
         self.app.add_url_rule('/robot/get_task_steps', 'get_task_steps', self.get_task_steps, methods=['GET'])
+        self.app.add_url_rule('/robot/update_machine_information', 'update_machine_information', self.update_machine_information, methods=['GET'])
         
         # WebSocket事件
         self.socketio.on_event('connect', self.handle_connect)
@@ -965,6 +1016,17 @@ class FlaskServer:
             return jsonify({}), 200
         except Exception as e:
             logging.error(f"[API Error] robot_response - 异常: {str(e)}")
+            return jsonify({"error": f"服务器内部错误: {str(e)}"}), 500
+    
+    def update_machine_information(self):
+        try:
+            logging.info("[API] update_machine_information - 机器人响应")
+            data = request.get_json()
+            logging.debug(f"[API] update_machine_information - 响应数据: {data}")
+            self.machine_information = data
+            return jsonify({}), 200
+        except Exception as e:
+            logging.error(f"[API Error] update_machine_information - 异常: {str(e)}")
             return jsonify({"error": f"服务器内部错误: {str(e)}"}), 500
     
     def get_task_steps(self):

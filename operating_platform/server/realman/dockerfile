@@ -2,11 +2,15 @@
 FROM ubuntu:20.04
 
 # 配置时区（避免 apt 安装阻塞）
-ENV DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         wget bzip2 ca-certificates \
         libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1 && \
+     # 设置上海时区（关键步骤）
+    ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    dpkg-reconfigure -f noninteractive tzdata && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
