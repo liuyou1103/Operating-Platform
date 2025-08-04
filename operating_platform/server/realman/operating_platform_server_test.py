@@ -113,6 +113,7 @@ class FlaskServer:
         self.machine_information = None
         self.upload_thread = threading.Thread(target=self.time_job, daemon=True)
         self.upload_nas_flag = False
+        self.upload_ks3_flag = False
         
         # 响应模板
         self.response_start_collection = {
@@ -616,8 +617,15 @@ class FlaskServer:
             logging.info("[API] start_collection - 开始采集请求")
             data = request.get_json()
             logging.debug(f"[API] start_collection - 请求数据: {data}")
-            
-            data['machine_id'] = get_machine_id()
+            if self.upload_ks3_flag:
+                response_data = {
+                            "code": 404,
+                            "data": {},
+                            "msg": '数据上传中，请勿采集'
+                        }
+                return jsonify(response_data), 200
+                
+            data['machine_id'] = self.load_machine_id()
             self.task_steps = data
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'start_collection', 'msg': data})
@@ -1037,7 +1045,7 @@ class FlaskServer:
     def run(self):
         logging.info("[Server] run - 启动服务器")
         self.upload_thread.start()
-        self.socketio.run(self.app, host='0.0.0.0', port=8080, debug=False)
+        self.socketio.run(self.app, host='0.0.0.0', port=8088, debug=False)
 
 
 

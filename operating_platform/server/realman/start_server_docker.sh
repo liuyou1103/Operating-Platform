@@ -3,7 +3,7 @@
 # ====================== 配置参数（可修改） ======================
 CONTAINER_NAME="baai_flask_server"      # 容器名称
 IMAGE_NAME="baai-flask-server-release"  # 镜像名称
-PORTS="-p 8080:8080"                    # 端口映射（主机端口:容器端口）
+PORTS="-p 8088:8088"                    # 端口映射（主机端口:容器端口）
 PRIVILEGED="--privileged=true"          # 特权模式（谨慎使用）
 RESTART_POLICY="--restart unless-stopped" # 重启策略
 

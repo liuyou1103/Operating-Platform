@@ -2,15 +2,11 @@
 FROM ubuntu:20.04
 
 # 配置时区（避免 apt 安装阻塞）
-ENV DEBIAN_FRONTEND=noninteractive
-
+ENV DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         wget bzip2 ca-certificates \
         libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1 && \
-     # 设置上海时区（关键步骤）
-    ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -38,5 +34,5 @@ ENV PATH="/opt/miniconda/envs/baai_server/bin:$PATH"
 RUN mkdir -p /app/code
 WORKDIR /app/code  
 
-EXPOSE 8088
+EXPOSE 8080
 CMD ["python", "operating_platform_server_test.py", "--log-output=stdout"]
