@@ -40,6 +40,20 @@ def read_common_record_json(each_task_path):
         task_name = data["task_name"]
     return task_id,task_name,machine_id
 
+def read_opdata_path_json(each_task_path):
+    task_object_list = []
+    each_opdata_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
+    with open(each_opdata_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            try:
+                # 去除行末的换行符，并解析为 JSON 对象
+                json_object_data = json.loads(line.strip())
+                dataid = json_object_data['dataid']
+                task_object_list.append(dataid)
+            except json.JSONDecodeError as e:
+                print(f"解析 JSON 失败，行内容: {line.strip()}, 错误信息: {e}")
+    return task_object_list
+
 def read_info_json(each_task_path):
     each_info_path = os.path.join(each_task_path,'meta','info.json')
     with open(each_info_path,"r",encoding="utf-8") as f:
@@ -163,12 +177,53 @@ def encode_depth_video_frames(
     except Exception as e:
         print(str(e))
         return False
+    
+def finish_upload_data(task_id,task_data_id,status,expand=None):
+    response_data =  {
+        "task_id": task_id,                 # 任务唯一ID
+        "task_data_id": task_data_id,            #任务数据批次ID
+        "transfer_type": "local_to_ks3" ,      #传输类型标识
+        "status" : status, # 成功(SUCCESS)或失败(FAILED)
+        "expand": expand,
+    }
+    return response_data
 
-def ffmpeg_encode():
-    pass
+def start_upload_data(task_id,task_data_id,source_path,target_path):
+    response_data = {
+        "task_id": task_id,                 #任务唯一ID
+        "task_data_id": task_data_id,            #任务数据批次ID
+        "source_path": source_path,        #源数据路径（根据transfer_type解析为本地/NAS路径）
+        "target_path": target_path,      # 目标数据路径（根据transfer_type解析为NAS/KS3路径）
+        "transfer_type": "local_to_ks3"  # 传输类型标识
+    }
+    return response_data
+
+def upload_dir(token,directory,target_directory):
+    
+    # 创建上传器实例
+    uploader = BaaiRobotDataUploader(use_direct_auth=False)
+    
+    # 设置认证信息
+    token = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhZG1pbiIsImxvZ2luX3VzZXJfa2V5IjoiMzlkNDRmMzEtZmUyNS00Y2ZkLTgyY2EtMGUwZDU0MDc3NzE4In0.uHKF2iyoD1ZEDc7HYjFgzpO24TrKxYGhnYtm7r8hnOGDBgE-Z3evmHgqNlQTRGy4K9cDiv59HpDFTSgbZRDY7A"
+    uploader.set_eai_token(eai_token=token)
+    uploader.get_ks3_sts()
+    uploader.set_max_worker(4)
+    
+    print("=" * 60)
+    print("📁 示例1: 上传目录")
+    print("=" * 60)
+    
+    # 示例1: 上传目录
+    result1 = uploader.batch_upload(
+        directory=directory,
+        target_directory=target_directory,
+        skip_exist=False,
+        show_progress=False
+    )
+    return True
     
 
-def encode_and_upload():
+def encode_and_upload(token):
     ffmpeg_encode_flag = True
     for i in range(3):
         if i == 0:
@@ -194,6 +249,7 @@ def encode_and_upload():
                 if camera_save_folder in subdirectories_1:
                     task_id,task_name,machine_id = read_common_record_json(each_task_path)
                     fps = read_info_json(each_task_path)
+                    task_data_id = read_opdata_path_json(each_task_path)
                     local_server_task_id_request(task_id)
                     
                     each_images_path = os.path.join(each_task_path,camera_save_folder)
@@ -216,8 +272,12 @@ def encode_and_upload():
                                         if not encode_video_frames(img_list[i],video_list[i],fps):
                                             ffmpeg_encode_flag = False                                   
                 if ffmpeg_encode_flag:
-                    pass
-                    #upload(each_task_path)
+                    target_path = os.path.join('collect',task_data_name,date_data)
+                    response_data = start_upload_data(task_id,task_data_id,each_task_path,target_path)
+                    local_server_request(response_data,'api/upload_start_ks3')
+                    if upload_dir(token,each_task_path,target_path):
+                        response_data = finish_upload_data(task_id,task_data_id,'SUCCESS',None)
+                        local_server_request(response_data,'api/upload_finish_ks3')
         except Exception as e:
             print(str(e))
 encode_and_upload()

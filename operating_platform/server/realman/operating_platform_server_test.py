@@ -18,6 +18,7 @@ import requests
 import json
 import upload_to_nas
 import uuid
+from upload_to_ks3 import encode_and_upload
 
 
 MACHINE_ID_PATH = '/home/machine/.config/baai_platform/machine_code'
@@ -92,8 +93,8 @@ class FlaskServer:
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         CORS(self.app)
 
-        self.web = "http://120.92.116.59:80/api"
-        #self.web = "http://172.16.17.253:8080/api"
+        #self.web = "http://120.92.116.59:80/api"
+        self.web = "http://120.92.91.171:30083/api"
         self.session = requests.Session() 
         self.token = None
 
@@ -113,6 +114,7 @@ class FlaskServer:
         self.machine_information = None
         self.upload_thread = threading.Thread(target=self.time_job, daemon=True)
         self.upload_nas_flag = False
+        self.upload_ks3_flag = False
         self.upload_ks3_id = '0'
         
         # 响应模板
@@ -269,8 +271,20 @@ class FlaskServer:
                 self.upload_nas_flag = False
             logging.error("[Task] local_to_nas - 任务执行失败，登录不成功")
 
+    def local_to_ks3(self):
+        logging.info(f"[Task] local_to_ks3 - 任务执行开始于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        if self.login():
+            encode_and_upload(self.token)
+            with self.upload_lock:
+                self.upload_ks3_flag = False
+            logging.info("[Task] local_to_ks3 - 任务执行完成")
+        else:
+            with self.upload_lock:
+                self.upload_ks3_flag = False
+            logging.error("[Task] local_to_ks3 - 任务执行失败，登录不成功")
+
     def time_job(self):
-        schedule.every().day.at("14:00").do(self.local_to_nas)
+        schedule.every().day.at("14:00").do(self.local_to_ks3)
         logging.info("[Task] time_job - 定时任务已启动，每天23:00执行...")
         try:
             while True:
@@ -382,6 +396,9 @@ class FlaskServer:
        
         # ks3反馈接口
         self.app.add_url_rule('/api/upload_task_id', 'upload_task_id', self.upload_task_id, methods=['POST'])
+        self.app.add_url_rule('/api/upload_start_ks3', 'upload_start_ks3', self.upload_start_ks3, methods=['POST'])
+        self.app.add_url_rule('/api/upload_finish_ks3', 'upload_finish_ks3', self.upload_finish_ks3, methods=['POST'])
+        
     
         # 机器人接口
         self.app.add_url_rule('/robot/update_stream/<stream_id>', 'update_frame', self.update_frame, methods=['POST'])
@@ -869,6 +886,47 @@ class FlaskServer:
                 "msg": str(e)
             }
             return jsonify(response_data), 500
+        
+    def manual_upload_ks3(self):
+        try:
+            logging.info("[API] manual_upload_ks3 - 手动上传NAS请求")
+            with self.upload_lock:
+                if self.upload_ks3_flag:
+                    logging.warning("[API] manual_upload_ks3 - 数据上传中")
+                    response_data = {
+                        "code": 601,
+                        "data": {},
+                        "msg": '数据上传中'
+                    }
+                    return jsonify(response_data), 200
+                else:
+                    self.upload_ks3_flag = True
+                    if not self.login():
+                        logging.error("[API] manual_upload_ks3 -网络异常")
+                        response_data = {
+                            "code": 601,
+                            "data": {},
+                            "msg": '网络异常'
+                        }
+                        self.upload_ks3_flag = False
+                        return jsonify(response_data), 200
+                    upload_manual_thread = threading.Thread(target=self.local_to_ks3, daemon=True)
+                    upload_manual_thread.start()
+                    logging.info("[API] manual_upload_ks3 - 启动上传线程")
+                    response_data = {
+                        "code": 200,
+                        "data": {},
+                        "msg": 'success'
+                    }
+                    return jsonify(response_data), 200
+        except Exception as e:
+            logging.error(f"[API Error] manual_upload_ks3 - 异常: {str(e)}")
+            response_data = {
+                "code": 500,
+                "data": {},
+                "msg": str(e)
+            }
+            return jsonify(response_data), 500
 
     # ---------------------------------------upload----------------------------------------------
     def upload_start(self):
@@ -884,7 +942,32 @@ class FlaskServer:
         except Exception as e:
             logging.error(f"[API Error] upload_start - 异常: {str(e)}")
             return jsonify({'error': str(e)}), 500
+        
+    def upload_start_ks3(self):
+        try:
+            logging.info("[API] upload_start - 上传开始通知")
+            data = request.get_json()
+            logging.debug(f"[API] upload_start - 请求数据: {data}")
+            
+            self.make_request_with_token('eai/dts/upload/start', data)
+            logging.info("[API] upload_start - 上传开始通知处理完成")
+            return jsonify({}), 200
+        except Exception as e:
+            logging.error(f"[API Error] upload_start - 异常: {str(e)}")
+            return jsonify({'error': str(e)}), 500
 
+    def upload_finish_ks3(self):
+        try:
+            logging.info("[API] upload_finish - 上传完成通知")
+            data = request.get_json()
+            logging.debug(f"[API] upload_finish - 请求数据: {data}")
+            self.make_request_with_token('eai/dts/upload/complete', data)
+            logging.info("[API] upload_finish - 上传完成通知处理完成")
+            return jsonify({}), 200
+        except Exception as e:
+            logging.error(f"[API Error] upload_finish - 异常: {str(e)}")
+            return jsonify({'error': str(e)}), 500
+        
     def upload_finish(self):
         try:
             logging.info("[API] upload_finish - 上传完成通知")
