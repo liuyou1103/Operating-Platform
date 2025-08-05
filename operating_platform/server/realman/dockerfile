@@ -3,24 +3,30 @@ FROM ubuntu:20.04
 
 # 配置时区（避免 apt 安装阻塞）
 ENV DEBIAN_FRONTEND=noninteractive
+# 预先设置时区（关键）
+RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         wget bzip2 ca-certificates \
         libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender1 && \
-     # 设置上海时区（关键步骤）
-    ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
-    dpkg-reconfigure -f noninteractive tzdata && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # 安装 Miniconda（国内镜像加速）
-RUN wget -q https://mirrors.bfsu.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
+RUN wget -q https://mirrors.bfsu.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-aarch64.sh -O miniconda.sh && \
     bash miniconda.sh -b -p /opt/miniconda && \
     rm miniconda.sh
 
 # 设置全局 PATH
 ENV PATH="/opt/miniconda/bin:$PATH"
+RUN conda config --set always_yes yes && \
+    conda config --add channels conda-forge && \
+    conda clean -afy
+ 
+# 接受 Anaconda ToS（避免后续报错）
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # 创建 Conda 环境（从 YAML 文件）
 WORKDIR /app
@@ -40,3 +46,15 @@ WORKDIR /app/code
 
 EXPOSE 8088
 CMD ["python", "operating_platform_server_test.py", "--log-output=stdout"]
+
+# 在 Dockerfile 末尾添加（覆盖之前的时区设置）
+RUN apt-get update && \
+    apt-get install -y tzdata && \
+    ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    dpkg-reconfigure -f noninteractive tzdata && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 确保环境变量 TZ 也被设置
+
+ENV TZ=Asia/Shanghai

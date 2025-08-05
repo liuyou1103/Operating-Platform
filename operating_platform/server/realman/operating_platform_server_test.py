@@ -1,7 +1,7 @@
 coding = "utf-8"
 
 from gevent import monkey
-monkey.patch_all()
+monkey.patch_all(subprocess=False)
 
 from flask import Flask, jsonify, Response, request, session
 from flask_cors import CORS
@@ -274,9 +274,11 @@ class FlaskServer:
     def local_to_ks3(self):
         logging.info(f"[Task] local_to_ks3 - 任务执行开始于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if self.login():
+            # monkey.save_restore = False  # 禁用补丁
             encode_and_upload(self.token)
             with self.upload_lock:
                 self.upload_ks3_flag = False
+            # monkey.save_restore = True
             logging.info("[Task] local_to_ks3 - 任务执行完成")
         else:
             with self.upload_lock:
@@ -284,7 +286,7 @@ class FlaskServer:
             logging.error("[Task] local_to_ks3 - 任务执行失败，登录不成功")
 
     def time_job(self):
-        schedule.every().day.at("14:00").do(self.local_to_ks3)
+        schedule.every().day.at("23:00").do(self.local_to_ks3)
         logging.info("[Task] time_job - 定时任务已启动，每天23:00执行...")
         try:
             while True:
@@ -385,8 +387,9 @@ class FlaskServer:
         self.app.add_url_rule('/api/discard_collection', 'discard_collection', self.discard_collection, methods=['POST'])
         self.app.add_url_rule('/api/submit_collection', 'submit_collection', self.submit_collection, methods=['POST'])
 
-        # 手动上传nas
+        # 手动上传
         self.app.add_url_rule('/api/manual_upload_nas', 'manual_upload_nas', self.manual_upload_nas, methods=['POST']) 
+        self.app.add_url_rule('/api/manual_upload_ks3', 'manual_upload_ks3', self.manual_upload_ks3, methods=['GET']) 
 
         # nas上传反馈
         self.app.add_url_rule('/api/upload_start', 'upload_start', self.upload_start, methods=['POST'])
@@ -644,7 +647,7 @@ class FlaskServer:
                         }
                 return jsonify(response_data), 200
                 
-            data['machine_id'] = self.load_machine_id()
+            data['machine_id'] = self.load_machine_id() or "default_machine_id"
             self.task_steps = data
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'start_collection', 'msg': data})
@@ -947,6 +950,7 @@ class FlaskServer:
         try:
             logging.info("[API] upload_start - 上传开始通知")
             data = request.get_json()
+            print(data)
             logging.debug(f"[API] upload_start - 请求数据: {data}")
             
             self.make_request_with_token('eai/dts/upload/start', data)

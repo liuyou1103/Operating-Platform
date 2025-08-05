@@ -10,21 +10,23 @@ import subprocess
 from pathlib import Path
 import requests
 from collections import OrderedDict
+import shutil
  
 fold_path = "/home/agilex/Documents/Ryu-Yang/Operating-Platform/dataset/"
-fold_path = "/home/liuyou/Documents/test"
-server_url="http://localhost:8080"
+fold_path = "/home/rm/DoRobot/dataset/"
+server_url="http://localhost:8088"
 session = requests.Session()
 
 def local_server_request(api_url,data):
+    print(data)
     response = session.post(
         f"{server_url}/{api_url}",
         json=data
     )
-    
+    print(response.json())
 def local_server_task_id_request(task_id):
     data = {
-        "machine_id":str(task_id)
+        "task_id":str(task_id)
     }
     response = session.post(
         f"{server_url}/api/upload_task_id",
@@ -48,7 +50,7 @@ def read_opdata_path_json(each_task_path):
             try:
                 # 去除行末的换行符，并解析为 JSON 对象
                 json_object_data = json.loads(line.strip())
-                dataid = json_object_data['dataid']
+                dataid = int(json_object_data['dataid'])
                 task_object_list.append(dataid)
             except json.JSONDecodeError as e:
                 print(f"解析 JSON 失败，行内容: {line.strip()}, 错误信息: {e}")
@@ -65,7 +67,6 @@ def get_img_video_path(each_task_path,camera_images,camera_images_path):
     img_path_list = []
     video_path_list = []
     entries = os.listdir(camera_images_path) # 各任务列表
-    print(entries)
     # 筛选出子目录
     for episode_index in entries:
         img_path = os.path.join(camera_images_path, episode_index)
@@ -92,7 +93,7 @@ def encode_video_frames(
     fast_decode: int = 0,
     log_level: str | None = "error",
     overwrite: bool = False,
-) -> None:
+) -> bool:  # 改为返回 bool
     try:
         """More info on ffmpeg arguments tuning on `benchmark/video/README.md`"""
         video_path = Path(video_path)
@@ -103,7 +104,7 @@ def encode_video_frames(
             [
                 ("-f", "image2"),
                 ("-r", str(fps)),
-                ("-i", str(imgs_dir / "frame_%06d.png")),
+                ("-i", str(imgs_dir / "frame_%06d.jpg")),
                 ("-vcodec", vcodec),
                 ("-pix_fmt", pix_fmt),
             ]
@@ -148,7 +149,7 @@ def encode_depth_video_frames(
     vcodec: str = "ffv1",  # 使用无损编码
     pix_fmt: str = "gray16le",  # 单通道灰度
     overwrite: bool = False,
-) -> None:
+) -> bool:  # 改为返回 bool
     try:
         """Encode depth images to video."""
         video_path = Path(video_path)
@@ -166,11 +167,8 @@ def encode_depth_video_frames(
         
         if overwrite:
             ffmpeg_args.append("-y")
-        
         ffmpeg_args.append(str(video_path))
-        
         subprocess.run(ffmpeg_args, check=True, stdin=subprocess.DEVNULL)
-
         if not video_path.exists():
             raise OSError(f"Video encoding failed. File not found: {video_path}")
         return True
@@ -180,8 +178,8 @@ def encode_depth_video_frames(
     
 def finish_upload_data(task_id,task_data_id,status,expand=None):
     response_data =  {
-        "task_id": task_id,                 # 任务唯一ID
-        "task_data_id": task_data_id,            #任务数据批次ID
+        "task_id": int(task_id),                 # 任务唯一ID
+        "task_data_ids": task_data_id,            #任务数据批次ID
         "transfer_type": "local_to_ks3" ,      #传输类型标识
         "status" : status, # 成功(SUCCESS)或失败(FAILED)
         "expand": expand,
@@ -190,8 +188,8 @@ def finish_upload_data(task_id,task_data_id,status,expand=None):
 
 def start_upload_data(task_id,task_data_id,source_path,target_path):
     response_data = {
-        "task_id": task_id,                 #任务唯一ID
-        "task_data_id": task_data_id,            #任务数据批次ID
+        "task_id": int(task_id),                 #任务唯一ID
+        "task_data_ids": task_data_id,            #任务数据批次ID
         "source_path": source_path,        #源数据路径（根据transfer_type解析为本地/NAS路径）
         "target_path": target_path,      # 目标数据路径（根据transfer_type解析为NAS/KS3路径）
         "transfer_type": "local_to_ks3"  # 传输类型标识
@@ -204,9 +202,10 @@ def upload_dir(token,directory,target_directory):
     uploader = BaaiRobotDataUploader(use_direct_auth=False)
     
     # 设置认证信息
-    token = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhZG1pbiIsImxvZ2luX3VzZXJfa2V5IjoiMzlkNDRmMzEtZmUyNS00Y2ZkLTgyY2EtMGUwZDU0MDc3NzE4In0.uHKF2iyoD1ZEDc7HYjFgzpO24TrKxYGhnYtm7r8hnOGDBgE-Z3evmHgqNlQTRGy4K9cDiv59HpDFTSgbZRDY7A"
+    #token = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhZG1pbiIsImxvZ2luX3VzZXJfa2V5IjoiMzlkNDRmMzEtZmUyNS00Y2ZkLTgyY2EtMGUwZDU0MDc3NzE4In0.uHKF2iyoD1ZEDc7HYjFgzpO24TrKxYGhnYtm7r8hnOGDBgE-Z3evmHgqNlQTRGy4K9cDiv59HpDFTSgbZRDY7A"
+    #token = 'Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhZG1pbiIsImxvZ2luX3VzZXJfa2V5IjoiMWFkZDY4MzMtZGE2ZC00NzkwLWJlZjYtNGY4ZGM4ZmY2OTRlIn0.S0xO04favJeK12lsQvnXxo5bb9kD3aIv9l-CuL1608TQ_beaaka5qlRKBWtb5zy8UaL0HbdBCOC6-6N2jL3W-Q'
     uploader.set_eai_token(eai_token=token)
-    uploader.get_ks3_sts()
+    print(uploader.get_ks3_sts())
     uploader.set_max_worker(4)
     
     print("=" * 60)
@@ -221,27 +220,34 @@ def upload_dir(token,directory,target_directory):
         show_progress=False
     )
     return True
+
+def delete_directory(path):
+    try:
+        shutil.rmtree(path)
+        print(f"成功删除目录: {path}")
+    except OSError as e:
+        print(f"错误: {path} : {e.strerror}")
     
 
 def encode_and_upload(token):
-    ffmpeg_encode_flag = True
     for i in range(3):
         if i == 0:
-            date_data = get_today_date()
+            date_data = get_day_before_yesterday_date()
         elif i == 1:
             date_data = get_yesterday_date()
         elif i == 2:
-            date_data = get_day_before_yesterday_date()
+            date_data = get_today_date()
         print(date_data)
         directory_path = os.path.join(fold_path, date_data,'user')
         if not os.path.exists(directory_path):
-            print("数据路径不存在")
+            print(f"{directory_path}数据路径不存在")
             continue
         entries = os.listdir(directory_path) # 各任务列表
         # 筛选出子目录
         subdirectories = [entry for entry in entries if os.path.isdir(os.path.join(directory_path, entry))] # 仅筛选目录
         try:
             for task_data_name in subdirectories: 
+                ffmpeg_encode_flag = True
                 each_task_path = os.path.join(directory_path,task_data_name)
                 entries_1 = os.listdir(each_task_path) 
                 subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))] # data images videos meta
@@ -258,27 +264,38 @@ def encode_and_upload(token):
                         camera_images_path = os.path.join(each_images_path, camera_images)
                         if os.path.isdir(camera_images_path):
                             # 如果是目录，执行某些操作
-                            print(f"{camera_images_path} 是一个目录")
                             img_list,video_list = get_img_video_path(each_task_path,camera_images,camera_images_path)
                             if 'depth' in camera_images:
                                 if img_list:
-                                    for i in range(len(img_list)) :
-                                        if not encode_depth_video_frames(img_list[i],video_list[i],fps):
+                                    for j in range(len(img_list)):
+                                        print("=" * 60)
+                                        print(img_list[j],video_list[j],fps)
+                                        if not encode_depth_video_frames(img_list[j],video_list[j],fps):
                                             ffmpeg_encode_flag = False
                             else:
                                 if img_list:
-                                    for i in range(len(img_list)) :
-                                        print(img_list[i],video_list[i],fps)
-                                        if not encode_video_frames(img_list[i],video_list[i],fps):
-                                            ffmpeg_encode_flag = False                                   
+                                    for j in range(len(img_list)):
+                                        print(img_list[j],video_list[j],fps)
+                                        print("=" * 60)
+                                        if not encode_video_frames(img_list[j],video_list[j],fps):
+                                            ffmpeg_encode_flag = False  
+                else:
+                    if i == 0:
+                        delete_directory(each_task_path) 
+                    continue                              
                 if ffmpeg_encode_flag:
-                    target_path = os.path.join('collect',task_data_name,date_data)
+                    delete_directory(each_images_path)
+                    target_path = os.path.join('collect',task_data_name,machine_id,date_data)
                     response_data = start_upload_data(task_id,task_data_id,each_task_path,target_path)
-                    local_server_request(response_data,'api/upload_start_ks3')
+                    local_server_request('api/upload_start_ks3',response_data)
                     if upload_dir(token,each_task_path,target_path):
                         response_data = finish_upload_data(task_id,task_data_id,'SUCCESS',None)
-                        local_server_request(response_data,'api/upload_finish_ks3')
+                        local_server_request('api/upload_finish_ks3',response_data) 
+                    else:
+                        response_data = finish_upload_data(task_id,task_data_id,'FAILED',None)
+                        local_server_request('api/upload_finish_ks3',response_data) 
+                local_server_task_id_request(0)                   
         except Exception as e:
             print(str(e))
-encode_and_upload()
+
                             
