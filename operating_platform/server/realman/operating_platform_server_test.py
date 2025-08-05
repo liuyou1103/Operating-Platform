@@ -816,6 +816,12 @@ class FlaskServer:
 
     def manual_upload_nas(self):
         try:
+            response_data = {
+                        "code": 601,
+                        "data": {},
+                        "msg": '数据上传中'
+                    }
+            return jsonify(response_data), 200
             logging.info("[API] manual_upload_nas - 手动上传NAS请求")
             with self.upload_lock:
                 if self.upload_nas_flag:
@@ -1057,7 +1063,7 @@ class FlaskServer:
     
     def run(self):
         logging.info("[Server] run - 启动服务器")
-        self.upload_thread.start()
+        #self.upload_thread.start()
         self.socketio.run(self.app, host='0.0.0.0', port=8088, debug=False)
 
 
