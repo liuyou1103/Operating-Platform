@@ -18,7 +18,8 @@ import requests
 import json
 import upload_to_nas
 import uuid
-from upload_to_ks3 import encode_and_upload
+from upload_to_ks3 import RobotDataProcessor
+
 
 
 MACHINE_ID_PATH = '/home/machine/.config/baai_platform/machine_code'
@@ -116,6 +117,10 @@ class FlaskServer:
         self.upload_nas_flag = False
         self.upload_ks3_flag = False
         self.upload_ks3_id = '0'
+        self.processor = RobotDataProcessor(
+            fold_path="/home/agilex/Documents/Ryu-Yang/Operating-Platform/datasets",
+            server_url="http://localhost:8088"
+        )
         
         # 响应模板
         self.response_start_collection = {
@@ -273,12 +278,10 @@ class FlaskServer:
 
     def local_to_ks3(self):
         logging.info(f"[Task] local_to_ks3 - 任务执行开始于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        if self.login():
-            # monkey.save_restore = False  # 禁用补丁
-            encode_and_upload(self.token)
+        if self.login():    
+            self.processor.encode_and_upload(self.token)
             with self.upload_lock:
                 self.upload_ks3_flag = False
-            # monkey.save_restore = True
             logging.info("[Task] local_to_ks3 - 任务执行完成")
         else:
             with self.upload_lock:

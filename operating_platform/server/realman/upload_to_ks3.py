@@ -1,9 +1,3 @@
-from robot_data_uploader.collect_uploader import BaaiRobotDataUploader
-from upload_to_nas import(
-    get_today_date,
-    get_yesterday_date,
-    get_day_before_yesterday_date
-)
 import os
 import json
 import subprocess
@@ -11,291 +5,519 @@ from pathlib import Path
 import requests
 from collections import OrderedDict
 import shutil
- 
-fold_path = "/home/agilex/Documents/Ryu-Yang/Operating-Platform/dataset/"
-fold_path = "/home/rm/DoRobot/dataset/"
-server_url="http://localhost:8088"
-session = requests.Session()
+from typing import List, Dict, Union, Optional
+from robot_data_uploader.collect_uploader import BaaiRobotDataUploader
+from upload_to_nas import get_day_before_yesterday_date, get_yesterday_date, get_today_date
 
-def local_server_request(api_url,data):
-    print(data)
-    response = session.post(
-        f"{server_url}/{api_url}",
-        json=data
-    )
-    print(response.json())
-def local_server_task_id_request(task_id):
-    data = {
-        "task_id":str(task_id)
-    }
-    response = session.post(
-        f"{server_url}/api/upload_task_id",
-        json=data
-    )
+
+class RobotDataProcessor:
+    def __init__(self, fold_path: str = "/home/rm/DoRobot/dataset/", server_url: str = "http://localhost:8088"):
+        """
+        初始化机器人数据处理类
+        
+        Args:
+            fold_path (str): 数据集基础路径
+            server_url (str): 本地服务器URL
+        """
+        self.fold_path = fold_path
+        self.server_url = server_url
+        self.session = requests.Session()
+        self.token = None
+        
+    def set_token(self, token: str):
+        """设置KS3上传token"""
+        self.token = token
+        
+    def local_server_request(self, api_url: str, data: Dict):
+        """
+        向本地服务器发送POST请求
+        
+        Args:
+            api_url (str): API端点
+            data (Dict): 要发送的数据
+        """
+        print(f"[INFO] 发送请求到服务器: {api_url}")
+        print(f"[DEBUG] 请求数据: {data}")
+        
+        try:
+            response = self.session.post(
+                f"{self.server_url}/{api_url}",
+                json=data
+            )
+            response.raise_for_status()
+            print(f"[INFO] 服务器响应: {response.json()}")
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            print(f"[ERROR] 请求失败: {str(e)}")
+            return None
     
-def read_common_record_json(each_task_path):
-    each_common_record_path = os.path.join(each_task_path,'meta','common_record.json')
-    with open(each_common_record_path,"r",encoding="utf-8") as f:
-        data = json.load(f)
-        task_id = data["task_id"] # 云平台任务id
-        machine_id = data["machine_id"]
-        task_name = data["task_name"]
-    return task_id,task_name,machine_id
+    def local_server_task_id_request(self, task_id: Union[str, int]):
+        """
+        发送任务ID到服务器
+        
+        Args:
+            task_id (Union[str, int]): 任务ID
+        """
+        data = {"task_id": str(task_id)}
+        self.local_server_request('api/upload_task_id', data)
+    
+    def read_common_record_json(self, each_task_path: str) -> Dict:
+        """
+        读取common_record.json文件
+        Args:
+            each_task_path (str): 任务路径
+            
+        Returns:
+            Dict: 包含task_id, task_name, machine_id的字典
+        """
+        each_common_record_path = os.path.join(each_task_path, 'meta', 'common_record.json')
+        try:
+            with open(each_common_record_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                print(f"[DEBUG] 读取common_record.json成功: {data}")
+                return {
+                    "task_id": data.get("task_id"),
+                    "task_name": data.get("task_name"),
+                    "machine_id": data.get("machine_id")
+                }
+        except Exception as e:
+            print(f"[ERROR] 读取common_record.json失败: {str(e)}")
+            return {}
+    
+    def read_common_record_json_status(self, each_task_path: str) -> int:
+        """
+        读取common_record.json中的上传状态
+        Args:
+            each_task_path (str): 任务路径
+            
+        Returns:
+            int: 上传状态 (0: 未上传, 1: 上传成功, 2: 上传失败)
+        """
+        each_common_record_path = os.path.join(each_task_path, 'meta', 'common_record.json')
+        try:
+            with open(each_common_record_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                status = data.get('upload_status', 0)
+                print(f"[DEBUG] 当前上传状态: {status}")
+                return status
+        except Exception as e:
+            print(f"[ERROR] 读取上传状态失败: {str(e)}")
+            return 0
+    
+    def read_opdata_path_json(self, each_task_path: str) -> List[int]:
+        """
+        读取op_dataid.jsonl文件
+        
+        Args:
+            each_task_path (str): 任务路径
+            
+        Returns:
+            List[int]: 数据ID列表
+        """
+        task_object_list = []
+        each_opdata_path = os.path.join(each_task_path, "meta", "op_dataid.jsonl")
+        
+        try:
+            with open(each_opdata_path, 'r', encoding='utf-8') as file:
+                for line in file:
+                    try:
+                        json_object_data = json.loads(line.strip())
+                        dataid = int(json_object_data['dataid'])
+                        task_object_list.append(dataid)
+                    except json.JSONDecodeError as e:
+                        print(f"[WARNING] 解析JSON行失败: {line.strip()}, 错误: {e}")
+            print(f"[DEBUG] 读取到 {len(task_object_list)} 个数据ID")
+            return task_object_list
+        except Exception as e:
+            print(f"[ERROR] 读取op_dataid.jsonl失败: {str(e)}")
+            return []
+    
+    def read_info_json(self, each_task_path: str) -> Optional[int]:
+        """
+        读取info.json文件获取FPS
+        
+        Args:
+            each_task_path (str): 任务路径
+            
+        Returns:
+            Optional[int]: FPS值
+        """
+        each_info_path = os.path.join(each_task_path, 'meta', 'info.json')
+        try:
+            with open(each_info_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                fps = data.get("fps")
+                print(f"[DEBUG] 读取到FPS值: {fps}")
+                return fps
+        except Exception as e:
+            print(f"[ERROR] 读取info.json失败: {str(e)}")
+            return None
+    
+    def get_img_video_path(self, each_task_path: str, camera_images: str, camera_images_path: str) -> tuple:
+        """
+        获取图像和视频路径列表
+        
+        Args:
+            each_task_path (str): 任务路径
+            camera_images (str): 相机名称
+            camera_images_path (str): 相机图像路径
+            
+        Returns:
+            tuple: (img_path_list, video_path_list)
+        """
+        img_path_list = []
+        video_path_list = []
+        
+        try:
+            entries = os.listdir(camera_images_path)
+            for episode_index in entries:
+                img_path = os.path.join(camera_images_path, episode_index)
+                video_name = episode_index + '.avi'
+                video_path = os.path.join(each_task_path, 'videos', camera_images, video_name)
+                img_path_list.append(img_path)
+                video_path_list.append(video_path)
+            
+            if len(img_path_list) != len(video_path_list):
+                print("[ERROR] 图像和视频路径数量不匹配")
+                return [], []
+                
+            print(f"[DEBUG] 找到 {len(img_path_list)} 组图像和视频路径")
+            return img_path_list, video_path_list
+        except Exception as e:
+            print(f"[ERROR] 获取路径列表失败: {str(e)}")
+            return [], []
+    
+    def encode_video_frames(self, imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int) -> bool:
+        """
+        编码普通视频帧
+        
+        Args:
+            imgs_dir (Union[Path, str]): 图像目录
+            video_path (Union[Path, str]): 输出视频路径
+            fps (int): 帧率
+            
+        Returns:
+            bool: 是否成功
+        """
+        print(f"[INFO] 开始编码普通视频: {video_path}")
+        try:
+            imgs_dir = Path(imgs_dir)
+            video_path = Path(video_path)
+            video_path.parent.mkdir(parents=True, exist_ok=True)
 
-def read_opdata_path_json(each_task_path):
-    task_object_list = []
-    each_opdata_path = os.path.join(each_task_path,"meta","op_dataid.jsonl")
-    with open(each_opdata_path, 'r', encoding='utf-8') as file:
-        for line in file:
-            try:
-                # 去除行末的换行符，并解析为 JSON 对象
-                json_object_data = json.loads(line.strip())
-                dataid = int(json_object_data['dataid'])
-                task_object_list.append(dataid)
-            except json.JSONDecodeError as e:
-                print(f"解析 JSON 失败，行内容: {line.strip()}, 错误信息: {e}")
-    return task_object_list
-
-def read_info_json(each_task_path):
-    each_info_path = os.path.join(each_task_path,'meta','info.json')
-    with open(each_info_path,"r",encoding="utf-8") as f:
-        data = json.load(f)
-        fps = data["fps"] # fps      
-    return fps
-
-def get_img_video_path(each_task_path,camera_images,camera_images_path):
-    img_path_list = []
-    video_path_list = []
-    entries = os.listdir(camera_images_path) # 各任务列表
-    # 筛选出子目录
-    for episode_index in entries:
-        img_path = os.path.join(camera_images_path, episode_index)
-        video_name = episode_index + '.mp4'
-        video_path = os.path.join(each_task_path,'videos',camera_images,video_name)
-        img_path_list.append(img_path)
-        video_path_list.append(video_path)
-    if len(img_path_list) == len(video_path_list):
-        return img_path_list, video_path_list
-    else:
-        print("path error")
-        return [],[]
-                    
-
-
-def encode_video_frames(
-    imgs_dir: Path | str,
-    video_path: Path | str,
-    fps: int,
-    vcodec: str = "libx264",
-    pix_fmt: str = "yuv420p",
-    g: int | None = 2,
-    crf: int | None = 18,
-    fast_decode: int = 0,
-    log_level: str | None = "error",
-    overwrite: bool = False,
-) -> bool:  # 改为返回 bool
-    try:
-        """More info on ffmpeg arguments tuning on `benchmark/video/README.md`"""
-        video_path = Path(video_path)
-        imgs_dir = Path(imgs_dir)
-        video_path.parent.mkdir(parents=True, exist_ok=True)
-
-        ffmpeg_args = OrderedDict(
-            [
+            ffmpeg_args = OrderedDict([
                 ("-f", "image2"),
                 ("-r", str(fps)),
                 ("-i", str(imgs_dir / "frame_%06d.jpg")),
-                ("-vcodec", vcodec),
-                ("-pix_fmt", pix_fmt),
-            ]
-        )
+                ("-vcodec", "libx264"),
+                ("-pix_fmt", "yuv420p"),
+                ("-g", "5"),
+                ("-crf", "18"),
+                ("-loglevel", "error"),
+            ])
 
-        if g is not None:
-            ffmpeg_args["-g"] = str(g)
-
-        if crf is not None:
-            ffmpeg_args["-crf"] = str(crf)
-
-        if fast_decode:
-            key = "-svtav1-params" if vcodec == "libsvtav1" else "-tune"
-            value = f"fast-decode={fast_decode}" if vcodec == "libsvtav1" else "fastdecode"
-            ffmpeg_args[key] = value
-
-        if log_level is not None:
-            ffmpeg_args["-loglevel"] = str(log_level)
-
-        ffmpeg_args = [item for pair in ffmpeg_args.items() for item in pair]
-        if overwrite:
-            ffmpeg_args.append("-y")
-
-        ffmpeg_cmd = ["ffmpeg"] + ffmpeg_args + [str(video_path)]
-        # redirect stdin to subprocess.DEVNULL to prevent reading random keyboard inputs from terminal
-        subprocess.run(ffmpeg_cmd, check=True, stdin=subprocess.DEVNULL)
-
-        if not video_path.exists():
-            raise OSError(
-                f"Video encoding did not work. File not found: {video_path}. "
-                f"Try running the command manually to debug: `{''.join(ffmpeg_cmd)}`"
-            )
-        return True
-    except Exception as e:
-        print(str(e))
-        return False
+            ffmpeg_cmd = ["ffmpeg"] + [item for pair in ffmpeg_args.items() for item in pair] + [str(video_path)]
+            print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_cmd)}")
+            
+            subprocess.run(ffmpeg_cmd, check=True, stdin=subprocess.DEVNULL)
+            
+            if not video_path.exists():
+                raise OSError(f"视频文件未生成: {video_path}")
+                
+            print(f"[INFO] 普通视频编码成功: {video_path}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] 普通视频编码失败: {str(e)}")
+            return False
     
-def encode_depth_video_frames(
-    imgs_dir: Path | str,
-    video_path: Path | str,
-    fps: int,
-    vcodec: str = "ffv1",  # 使用无损编码
-    pix_fmt: str = "gray16le",  # 单通道灰度
-    overwrite: bool = False,
-) -> bool:  # 改为返回 bool
-    try:
-        """Encode depth images to video."""
-        video_path = Path(video_path)
-        imgs_dir = Path(imgs_dir)
-        video_path.parent.mkdir(parents=True, exist_ok=True)
-
-        ffmpeg_args = [
-            "ffmpeg",
-            "-f", "image2",
-            "-r", str(fps),
-            "-i", str(imgs_dir / "frame_%06d.png"),
-            "-vcodec", vcodec,
-            "-pix_fmt", pix_fmt,
-        ]
+    def encode_depth_video_frames(self, imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int) -> bool:
+        """
+        编码深度视频帧
         
-        if overwrite:
-            ffmpeg_args.append("-y")
-        ffmpeg_args.append(str(video_path))
-        subprocess.run(ffmpeg_args, check=True, stdin=subprocess.DEVNULL)
-        if not video_path.exists():
-            raise OSError(f"Video encoding failed. File not found: {video_path}")
-        return True
-    except Exception as e:
-        print(str(e))
-        return False
-    
-def finish_upload_data(task_id,task_data_id,status,expand=None):
-    response_data =  {
-        "task_id": int(task_id),                 # 任务唯一ID
-        "task_data_ids": task_data_id,            #任务数据批次ID
-        "transfer_type": "local_to_ks3" ,      #传输类型标识
-        "status" : status, # 成功(SUCCESS)或失败(FAILED)
-        "expand": expand,
-    }
-    return response_data
-
-def start_upload_data(task_id,task_data_id,source_path,target_path):
-    response_data = {
-        "task_id": int(task_id),                 #任务唯一ID
-        "task_data_ids": task_data_id,            #任务数据批次ID
-        "source_path": source_path,        #源数据路径（根据transfer_type解析为本地/NAS路径）
-        "target_path": target_path,      # 目标数据路径（根据transfer_type解析为NAS/KS3路径）
-        "transfer_type": "local_to_ks3"  # 传输类型标识
-    }
-    return response_data
-
-def upload_dir(token,directory,target_directory):
-    
-    # 创建上传器实例
-    uploader = BaaiRobotDataUploader(use_direct_auth=False)
-    
-    # 设置认证信息
-    #token = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhZG1pbiIsImxvZ2luX3VzZXJfa2V5IjoiMzlkNDRmMzEtZmUyNS00Y2ZkLTgyY2EtMGUwZDU0MDc3NzE4In0.uHKF2iyoD1ZEDc7HYjFgzpO24TrKxYGhnYtm7r8hnOGDBgE-Z3evmHgqNlQTRGy4K9cDiv59HpDFTSgbZRDY7A"
-    #token = 'Bearer eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJhZG1pbiIsImxvZ2luX3VzZXJfa2V5IjoiMWFkZDY4MzMtZGE2ZC00NzkwLWJlZjYtNGY4ZGM4ZmY2OTRlIn0.S0xO04favJeK12lsQvnXxo5bb9kD3aIv9l-CuL1608TQ_beaaka5qlRKBWtb5zy8UaL0HbdBCOC6-6N2jL3W-Q'
-    uploader.set_eai_token(eai_token=token)
-    print(uploader.get_ks3_sts())
-    uploader.set_max_worker(4)
-    
-    print("=" * 60)
-    print("📁 示例1: 上传目录")
-    print("=" * 60)
-    
-    # 示例1: 上传目录
-    result1 = uploader.batch_upload(
-        directory=directory,
-        target_directory=target_directory,
-        skip_exist=False,
-        show_progress=False
-    )
-    return True
-
-def delete_directory(path):
-    try:
-        shutil.rmtree(path)
-        print(f"成功删除目录: {path}")
-    except OSError as e:
-        print(f"错误: {path} : {e.strerror}")
-    
-
-def encode_and_upload(token):
-    for i in range(3):
-        if i == 0:
-            date_data = get_day_before_yesterday_date()
-        elif i == 1:
-            date_data = get_yesterday_date()
-        elif i == 2:
-            date_data = get_today_date()
-        print(date_data)
-        directory_path = os.path.join(fold_path, date_data,'user')
-        if not os.path.exists(directory_path):
-            print(f"{directory_path}数据路径不存在")
-            continue
-        entries = os.listdir(directory_path) # 各任务列表
-        # 筛选出子目录
-        subdirectories = [entry for entry in entries if os.path.isdir(os.path.join(directory_path, entry))] # 仅筛选目录
+        Args:
+            imgs_dir (Union[Path, str]): 图像目录
+            video_path (Union[Path, str]): 输出视频路径
+            fps (int): 帧率
+            
+        Returns:
+            bool: 是否成功
+        """
+        print(f"[INFO] 开始编码深度视频: {video_path}")
         try:
-            for task_data_name in subdirectories: 
-                ffmpeg_encode_flag = True
-                each_task_path = os.path.join(directory_path,task_data_name)
-                entries_1 = os.listdir(each_task_path) 
-                subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))] # data images videos meta
-                camera_save_folder = 'images'
-                if camera_save_folder in subdirectories_1:
-                    task_id,task_name,machine_id = read_common_record_json(each_task_path)
-                    fps = read_info_json(each_task_path)
-                    task_data_id = read_opdata_path_json(each_task_path)
-                    local_server_task_id_request(task_id)
+            imgs_dir = Path(imgs_dir)
+            video_path = Path(video_path)
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+
+            ffmpeg_args = [
+                "ffmpeg",
+                "-f", "image2",
+                "-r", str(fps),
+                "-i", str(imgs_dir / "frame_%06d.png"),
+                "-vcodec", "ffv1",
+                "-pix_fmt", "gray16le",
+                "-y",
+                str(video_path)
+            ]
+            
+            print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_args)}")
+            subprocess.run(ffmpeg_args, check=True, stdin=subprocess.DEVNULL)
+            
+            if not video_path.exists():
+                raise OSError(f"视频文件未生成: {video_path}")
+                
+            print(f"[INFO] 深度视频编码成功: {video_path}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] 深度视频编码失败: {str(e)}")
+            return False
+    
+    def finish_upload_data(self, task_id: Union[str, int], task_data_id: List[int], status: str, expand: Optional[Dict] = None) -> Dict:
+        """
+        构建上传完成数据
+        
+        Args:
+            task_id (Union[str, int]): 任务ID
+            task_data_id (List[int]): 任务数据ID列表
+            status (str): 状态 (SUCCESS/FAILED)
+            expand (Optional[Dict]): 扩展信息
+            
+        Returns:
+            Dict: 响应数据
+        """
+        response_data = {
+            "task_id": int(task_id),
+            "task_data_ids": task_data_id,
+            "transfer_type": "local_to_ks3",
+            "status": status,
+            "expand": expand or '{}'
+        }
+        print(f"[DEBUG] 构建上传完成数据: {response_data}")
+        return response_data
+    
+    def start_upload_data(self, task_id: Union[str, int], task_data_id: List[int], source_path: str, target_path: str) -> Dict:
+        """
+        构建开始上传数据
+        
+        Args:
+            task_id (Union[str, int]): 任务ID
+            task_data_id (List[int]): 任务数据ID列表
+            source_path (str): 源路径
+            target_path (str): 目标路径
+            
+        Returns:
+            Dict: 响应数据
+        """
+        response_data = {
+            "task_id": int(task_id),
+            "task_data_ids": task_data_id,
+            "source_path": source_path,
+            "target_path": target_path,
+            "transfer_type": "local_to_ks3"
+        }
+        print(f"[DEBUG] 构建开始上传数据: {response_data}")
+        return response_data
+    
+    def upload_dir(self, directory: str, target_directory: str) -> bool:
+        """
+        上传目录到KS3
+        
+        Args:
+            directory (str): 源目录
+            target_directory (str): 目标目录
+            
+        Returns:
+            bool: 是否成功
+        """
+        if not self.token:
+            print("[ERROR] 未设置KS3上传token")
+            return False
+            
+        print(f"[INFO] 开始上传目录: {directory} -> {target_directory}")
+        try:
+            
+            uploader = BaaiRobotDataUploader(use_direct_auth=False)
+            uploader.set_eai_token(eai_token=self.token)
+            uploader.get_ks3_sts()
+            uploader.set_max_worker(4)
+            
+            result = uploader.batch_upload(
+                directory=directory,
+                target_directory=target_directory,
+                skip_exist=False,
+                show_progress=False
+            )
+            
+            print(f"[INFO] 目录上传完成: {directory}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] 目录上传失败: {str(e)}")
+            return False
+    
+    @staticmethod
+    def delete_directory(path: str):
+        """
+        删除目录
+        
+        Args:
+            path (str): 要删除的目录路径
+        """
+        try:
+            shutil.rmtree(path)
+            print(f"[INFO] 成功删除目录: {path}")
+        except OSError as e:
+            print(f"[ERROR] 删除目录失败: {path}, 错误: {e.strerror}")
+    
+    @staticmethod
+    def modify_json(path: str, upload_status: int):
+        """
+        修改JSON文件中的上传状态
+        
+        Args:
+            path (str): JSON文件路径
+            upload_status (int): 新的上传状态
+        """
+        try:
+            with open(path, 'r', encoding='utf-8') as file:
+                existing_data = json.load(file)
+            
+            existing_data['upload_status'] = upload_status
+            
+            with open(path, 'w', encoding='utf-8') as file:
+                json.dump(existing_data, file, indent=4, ensure_ascii=False)
+                
+            print(f"[INFO] 成功修改JSON文件: {path}, 新状态: {upload_status}")
+        except Exception as e:
+            print(f"[ERROR] 修改JSON文件失败: {path}, 错误: {str(e)}")
+    
+    def process_date_data(self, date_data: str):
+        """
+        处理指定日期的数据
+        
+        Args:
+            date_data (str): 日期字符串 (格式: YYYY-MM-DD)
+        """
+        print(f"\n[INFO] 开始处理日期数据: {date_data}")
+        directory_path = os.path.join(self.fold_path, date_data, 'user')
+        
+        if not os.path.exists(directory_path):
+            print(f"[WARNING] 数据路径不存在: {directory_path}")
+            return
+            
+        entries = os.listdir(directory_path)
+        subdirectories = [entry for entry in entries if os.path.isdir(os.path.join(directory_path, entry))]
+        
+        for task_data_name in subdirectories:
+            print(f"\n[INFO] 处理任务: {task_data_name}")
+            ffmpeg_encode_flag = True
+            each_task_path = os.path.join(directory_path, task_data_name)
+            
+            # 检查是否有images目录
+            entries_1 = os.listdir(each_task_path)
+            subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))]
+            
+            if 'images' in subdirectories_1:
+                # 处理图像和视频
+                try:
+                    task_info = self.read_common_record_json(each_task_path)
+                    if not task_info:
+                        continue
+                        
+                    task_id = task_info['task_id']
+                    task_name = task_info['task_name']
+                    machine_id = task_info['machine_id']
                     
-                    each_images_path = os.path.join(each_task_path,camera_save_folder)
+                    fps = self.read_info_json(each_task_path)
+                    if fps is None:
+                        continue
+                        
+                    task_data_id = self.read_opdata_path_json(each_task_path)
+                    if not task_data_id:
+                        continue
+                        
+                    # 通知服务器开始处理任务
+                    self.local_server_task_id_request(task_id)
+                    
+                    # 处理每个相机的图像
+                    each_images_path = os.path.join(each_task_path, 'images')
                     entries_2 = os.listdir(each_images_path)
+                    
                     for camera_images in entries_2:
                         camera_images_path = os.path.join(each_images_path, camera_images)
                         if os.path.isdir(camera_images_path):
-                            # 如果是目录，执行某些操作
-                            img_list,video_list = get_img_video_path(each_task_path,camera_images,camera_images_path)
+                            img_list, video_list = self.get_img_video_path(each_task_path, camera_images, camera_images_path)
+                            
                             if 'depth' in camera_images:
+                                # 处理深度图像
                                 if img_list:
-                                    for j in range(len(img_list)):
-                                        print("=" * 60)
-                                        print(img_list[j],video_list[j],fps)
-                                        if not encode_depth_video_frames(img_list[j],video_list[j],fps):
+                                    for img_path, video_path in zip(img_list, video_list):
+                                        print(f"[INFO] 处理深度图像: {img_path} -> {video_path}")
+                                        if not self.encode_depth_video_frames(img_path, video_path, fps):
                                             ffmpeg_encode_flag = False
                             else:
+                                # 处理普通图像
                                 if img_list:
-                                    for j in range(len(img_list)):
-                                        print(img_list[j],video_list[j],fps)
-                                        print("=" * 60)
-                                        if not encode_video_frames(img_list[j],video_list[j],fps):
-                                            ffmpeg_encode_flag = False  
+                                    for img_path, video_path in zip(img_list, video_list):
+                                        print(f"[INFO] 处理普通图像: {img_path} -> {video_path}")
+                                        if not self.encode_video_frames(img_path, video_path, fps):
+                                            ffmpeg_encode_flag = False
+                except Exception as e:
+                    print(f"[ERROR] 处理任务 {task_data_name} 失败: {str(e)}")
+                    ffmpeg_encode_flag = False
+            else:
+                # 没有images目录，检查上传状态
+                status = self.read_common_record_json_status(each_task_path)
+                if status == 1:
+                    # 如果是前天数据且已上传成功，则删除
+                    # 这里假设date_data是前天日期，实际逻辑可能需要调整
+                    self.delete_directory(each_task_path)
+                continue
+            
+            # 上传处理后的数据
+            if ffmpeg_encode_flag:
+                if 'images' in subdirectories_1:
+                    self.delete_directory(os.path.join(each_task_path, 'images'))
+                
+                target_path = os.path.join('collect', task_data_name, machine_id, date_data)
+                
+                # 通知服务器开始上传
+                start_data = self.start_upload_data(task_id, task_data_id, each_task_path, target_path)
+                self.local_server_request('api/upload_start_ks3', start_data)
+                
+                # 执行上传
+                if self.upload_dir(each_task_path, target_path):
+                    # 上传成功
+                    finish_data = self.finish_upload_data(task_id, task_data_id, 'SUCCESS')
+                    self.local_server_request('api/upload_finish_ks3', finish_data)
+                    self.modify_json(os.path.join(each_task_path, 'meta', 'common_record.json'), 1)
                 else:
-                    if i == 0:
-                        delete_directory(each_task_path) 
-                    continue                              
-                if ffmpeg_encode_flag:
-                    delete_directory(each_images_path)
-                    target_path = os.path.join('collect',task_data_name,machine_id,date_data)
-                    response_data = start_upload_data(task_id,task_data_id,each_task_path,target_path)
-                    local_server_request('api/upload_start_ks3',response_data)
-                    if upload_dir(token,each_task_path,target_path):
-                        response_data = finish_upload_data(task_id,task_data_id,'SUCCESS',None)
-                        local_server_request('api/upload_finish_ks3',response_data) 
-                    else:
-                        response_data = finish_upload_data(task_id,task_data_id,'FAILED',None)
-                        local_server_request('api/upload_finish_ks3',response_data) 
-                local_server_task_id_request(0)                   
-        except Exception as e:
-            print(str(e))
-
-                            
+                    # 上传失败
+                    finish_data = self.finish_upload_data(
+                        task_id, task_data_id, 'FAILED', 
+                        {"ks3_failed_msg": "网络通信错误"}
+                    )
+                    self.local_server_request('api/upload_finish_ks3', finish_data)
+                    self.modify_json(os.path.join(each_task_path, 'meta', 'common_record.json'), 2)
+            
+            # 通知服务器任务处理完成
+            self.local_server_task_id_request(0)
+    
+    def encode_and_upload(self, token: str):
+        """
+        主处理流程：编码视频并上传
+        
+        Args:
+            token (str): KS3上传token
+        """
+        self.set_token(token)
+        
+        
+        date_functions = [
+            ("前天数据", get_day_before_yesterday_date),
+            ("昨天数据", get_yesterday_date),
+            ("今天数据", get_today_date)
+        ]
+        
+        for date_name, date_func in date_functions:
+            print(f"\n[INFO] 开始处理 {date_name}")
+            date_data = date_func()
+            self.process_date_data(date_data)
