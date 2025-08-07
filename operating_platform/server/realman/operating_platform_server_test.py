@@ -118,6 +118,7 @@ class FlaskServer:
         self.upload_nas_flag = False
         self.upload_ks3_flag = False
         self.upload_ks3_id = '0'
+        self._running = False
         self.processor = RobotDataProcessor(
             fold_path="/home/rm/DoRobot/dataset/",
             server_url="http://localhost:8088"
@@ -153,7 +154,7 @@ class FlaskServer:
         # mac_hex = '{:012X}'.format(mac)  # 12 位大写十六进制
         # return mac_hex
         """生成随机唯一标识（不依赖硬件）"""
-        return uuid.uuid4()
+        return str(uuid.uuid4())
     
     def generate_machine_id(self):
         """生成机器 ID（MAC地址_aloha）"""
@@ -326,10 +327,11 @@ class FlaskServer:
 
     def register_machine(self,unique_code):
         data = {
-            'device_type':'realman',
+            'device_body':'realman',
             'device_code':unique_code
         }
         response_data = self.make_request_with_token('eai/device/register', data)
+        logging.info(response_data)
         if response_data['code'] == 200:
             machine_id = response_data['data']['device_id']
             if self.save_machine_platform_id(machine_id,unique_code):
@@ -391,7 +393,7 @@ class FlaskServer:
                 response_data = self.make_request_with_token('eai/device/update_device_information', data)
                 logging.info(f"设备信息更新到平台反馈：{response_data}")
             else:
-                logging.warning(f"设备未上报信息：{response_data}")
+                logging.warning(f"设备未上报信息")
         except Exception as e:
             logging.error(f"未知错误，无法更新机器信息: {e}")
 
