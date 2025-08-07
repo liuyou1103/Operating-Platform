@@ -173,7 +173,7 @@ class RobotDataProcessor:
             for episode_index in entries:
                 img_path = os.path.join(camera_images_path, episode_index)
                 video_name = episode_index + '.avi'
-                video_path = os.path.join(each_task_path, 'videos', camera_images, video_name)
+                video_path = os.path.join(each_task_path, 'videos', 'chunk-000',camera_images, video_name)
                 img_path_list.append(img_path)
                 video_path_list.append(video_path)
             

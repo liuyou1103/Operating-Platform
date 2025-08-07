@@ -3,7 +3,8 @@
 # ====================== 配置参数（可修改） ======================
 CONTAINER_NAME="baai_flask_server"      # 容器名称
 IMAGE_NAME="baai-flask-server-release"  # 镜像名称
-PORTS="-p 8088:8088"                    # 端口映射
+#PORTS="-p 8088:8088"                    # 端口映射
+PORTS="--network host"
 PRIVILEGED="--privileged=true"          # 特权模式（谨慎使用）
 RESTART_POLICY="--restart unless-stopped" # 重启策略
 
@@ -14,6 +15,7 @@ CURRENT_USER=$(whoami)
 VOLUMES="-v /home/${CURRENT_USER}/Documents/Operating-Platform/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/"
 VOLUMES2="-v /home/${CURRENT_USER}/Documents/server/release/Operating-Platform/operating_platform/server/realman/:/app/code/"
 VOLUMES3="-v /home/${CURRENT_USER}/.config/:/home/machine/.config/"
+VOLUMES4="-v /home/rm/DoRobot/dataset/:/home/rm/DoRobot/dataset/"
 
 # ====================== 逻辑部分（增强版） ======================
 
@@ -50,6 +52,7 @@ else
         ${VOLUMES} \
         ${VOLUMES2} \
         ${VOLUMES3} \
+        ${VOLUMES4} \
         ${IMAGE_NAME}
 fi
 

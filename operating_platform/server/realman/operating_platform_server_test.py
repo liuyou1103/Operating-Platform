@@ -83,7 +83,7 @@ class VideoStream:
 
  
 def get_machine_id():
-    return "BAAI_AX_AL_001"
+    return "default_machine_id"
 
 
 class FlaskServer:
@@ -113,12 +113,13 @@ class FlaskServer:
         self.init_streams_flag = False
         self.task_steps = {}
         self.machine_information = None
+        self.machine_information_timestamp = None
         self.upload_thread = threading.Thread(target=self.time_job, daemon=True)
         self.upload_nas_flag = False
         self.upload_ks3_flag = False
         self.upload_ks3_id = '0'
         self.processor = RobotDataProcessor(
-            fold_path="/home/agilex/Documents/Ryu-Yang/Operating-Platform/datasets",
+            fold_path="/home/rm/DoRobot/dataset/",
             server_url="http://localhost:8088"
         )
         
@@ -165,10 +166,10 @@ class FlaskServer:
             os.makedirs(os.path.dirname(MACHINE_ID_PATH), exist_ok=True)  # 确保目录存在
             with open(MACHINE_ID_PATH, "w") as f:
                 f.write(machine_id)
+            logging.info(f"机器 ID 已保存到 {MACHINE_ID_PATH}")
             os.makedirs(os.path.dirname(UNIQUE_CODE_PATH), exist_ok=True)  # 确保目录存在
             with open(UNIQUE_CODE_PATH, "w") as f:
                 f.write(unique_code)
-            logging.info(f"机器 ID 已保存到 {MACHINE_ID_PATH}")
             logging.info(f"标识码 ID 已保存到 {UNIQUE_CODE_PATH}")
             return True
         except Exception as e:
@@ -210,6 +211,11 @@ class FlaskServer:
         logging.info("[API Request] login - 开始登录云平台")
         url = f"{self.web}/login"
         
+        # data = {
+        #     "username": "eai_realman_collect",
+        #     "password": "Realman@2025"
+        # }
+         
         data = {
             "username": "eai_data_collect",
             "password": "eai_collect@2025"
@@ -250,9 +256,7 @@ class FlaskServer:
                 response = self.session.post(url, headers=headers, json=data)
             else:
                 response = self.session.get(url, headers=headers)
-            
             logging.info(f"[API Response] make_request_with_token - 状态码: {response.status_code}")
-            
             if response.status_code == 200:
                 response_data = response.json()
                 logging.info(f"[API Response] make_request_with_token - 成功: {response_data}")
@@ -323,14 +327,15 @@ class FlaskServer:
     def register_machine(self,unique_code):
         data = {
             'device_type':'realman',
-            'unique_code':unique_code
+            'device_code':unique_code
         }
         response_data = self.make_request_with_token('eai/device/register', data)
-        if response_data:
+        if response_data['code'] == 200:
             machine_id = response_data['data']['device_id']
             if self.save_machine_platform_id(machine_id,unique_code):
                 return machine_id
-
+        else:
+            return None
 
     def init_or_get_machine_id(self):
         if self.login():
@@ -348,35 +353,72 @@ class FlaskServer:
                     if machine_id:
                         return machine_id
                 # 3. 都不存在则生成新 ID
-                logging.info("未找到机器 ID，正在生成...")
+                logging.info("未找到机器 ID和标识码，正在生成...")
                 unique_code = self.get_unique_code()
                 machine_id = self.register_machine(unique_code)
                 if machine_id:
                     logging.info(f"生成的机器 ID")
                     return machine_id
+                else:
+                    logging.info(f"生成的机器 ID 失败！！！！")
+                    return machine_id
             except Exception as e:
                 logging.error(f"未知错误，无法生成机器 ID: {e}")
-                return get_machine_id()
+                return None
             
+    def set_is_connect_false(self,d):
+        if isinstance(d, dict):
+            for key, value in d.items():
+                if key == "is_connect":
+                    d[key] = False
+                else:
+                    self.set_is_connect_false(value)
+        elif isinstance(d, list):
+            for item in d:
+                self.set_is_connect_false(item)
+
     def update_machine_information_to_platform(self):
         try:
+            device_id = self.init_or_get_machine_id()
             if self.machine_information:
                 data = {
-                    "device_id": self.init_or_get_machine_id(),
-                    "unique_code": self.load_unique_code(),
-                    "device_information": self.machine_information
-                }
+                        "device_id": device_id,
+                        "device_code": self.load_unique_code(),
+                    }
+                data.update(self.machine_information)
+                if abs(time.time() - self.machine_information_timestamp) > 80:
+                    self.set_is_connect_false(data) 
                 response_data = self.make_request_with_token('eai/device/update_device_information', data)
+                logging.info(f"设备信息更新到平台反馈：{response_data}")
             else:
-                return 
+                logging.warning(f"设备未上报信息：{response_data}")
         except Exception as e:
             logging.error(f"未知错误，无法更新机器信息: {e}")
 
+    def _run_periodic_update(self):
+        """定时执行更新任务的内部方法"""
+        while self._running:
+            self.update_machine_information_to_platform()
+            time.sleep(60)  # 每分钟执行一次
+ 
+    def start_periodic_update(self):
+        """启动定时更新线程"""
+        if not self._running:
+            self._running = True
+            thread = threading.Thread(target=self._run_periodic_update, daemon=True)
+            thread.start()
+            logging.info("设备信息定时更新线程已启动(每分钟)")
+ 
+    def stop_periodic_update(self):
+        """停止定时更新线程"""
+        self._running = False
+        logging.info("设备信息定时更新线程已停止")
 
     def register_routes(self):
         """注册所有路由"""
         # 系统信息
         self.app.add_url_rule('/api/info', 'system_info', self.system_info, methods=['GET'])
+        self.app.add_url_rule('/api/device_information', 'device_information', self.device_information, methods=['GET'])
         
         # 视频流管理
         self.app.add_url_rule('/api/stream_info', 'get_streams', self.get_streams, methods=['GET'])
@@ -456,6 +498,27 @@ class FlaskServer:
         except Exception as e:
             logging.error(f"[API Error] system_info - 异常: {str(e)}")
             return jsonify({"error": str(e)}), 500
+        
+    def device_information(self):
+        """获取系统信息"""
+        logging.info("[API] device_information - 获取设备信息请求")
+        try:
+            response_data = {
+                "code": 200,
+                "data": {
+                    "device_id":self.load_machine_id()
+                },
+                "msg": "success"
+            }
+            return jsonify(response_data), 200
+        except Exception as e:
+            logging.error(f"[API Error] device_information - 异常: {str(e)}")
+            response_data = {
+                "code": 500,
+                "data": {},
+                "msg": str(e)
+            }
+            return jsonify(response_data), 500
     
     def get_streams(self):
         try:
@@ -656,7 +719,7 @@ class FlaskServer:
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'start_collection', 'msg': data})
             
             while True:
-                if 0 < self.response_start_collection["timestamp"] - now_time < 8:
+                if 0 < self.response_start_collection["timestamp"] - now_time < 15:
                     if self.response_start_collection['msg'] == "success":
                         logging.info("[API] start_collection - 采集开始成功")
                         response_data = {
@@ -675,7 +738,7 @@ class FlaskServer:
                         return jsonify(response_data), 200
                 else:
                     time.sleep(0.02)
-                if time.time() - now_time > 8:
+                if time.time() - now_time > 15:
                     logging.warning("[API] start_collection - 机器人响应超时")
                     response_data = {
                         "code": 404,
@@ -697,7 +760,6 @@ class FlaskServer:
             logging.info("[API] finish_collection - 完成采集请求")
             data = request.get_json()
             logging.debug(f"[API] finish_collection - 请求数据: {data}")
-            
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'finish_collection'})
             
@@ -705,6 +767,7 @@ class FlaskServer:
                 if 0 < self.response_finish_collection["timestamp"] - now_time < 100:
                     if self.response_finish_collection['msg'] == "success":
                         logging.info("[API] finish_collection - 采集完成成功")
+                        self.response_finish_collection['data']["device_id"] = self.load_machine_id()
                         response_data = {
                             "code": 200,
                             "data": self.response_finish_collection['data'],
@@ -1141,6 +1204,7 @@ class FlaskServer:
             data = request.get_json()
             logging.debug(f"[API] update_machine_information - 响应数据: {data}")
             self.machine_information = data
+            self.machine_information_timestamp = time.time()
             return jsonify({}), 200
         except Exception as e:
             logging.error(f"[API Error] update_machine_information - 异常: {str(e)}")
@@ -1153,7 +1217,8 @@ class FlaskServer:
     
     def run(self):
         logging.info("[Server] run - 启动服务器")
-        #self.upload_thread.start()
+        self.upload_thread.start()
+        self.start_periodic_update()
         self.socketio.run(self.app, host='0.0.0.0', port=8088, debug=False)
 
 
