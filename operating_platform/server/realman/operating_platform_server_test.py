@@ -243,25 +243,34 @@ class FlaskServer:
             logging.error(f"[API Error] login - 请求异常: {str(e)}")
             return False
         
-    def make_request_with_token(self, path, data):
-        """发送带有 token 和请求体的请求"""
+    def make_request_with_token(self, path, data=None, method="POST"):
+        """发送带有 token 和请求体的请求（支持 GET/POST/PUT）"""
         if not self.token:
             logging.warning("[API Warning] make_request_with_token - 未登录，无法发送请求")
             return None
-    
+
         url = f"{self.web}/{path}"
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
         }
-    
+
         try:
-            logging.info(f"[API Request] make_request_with_token - 路径: {path}, 数据: {data}")
-            if data:
-                response = self.session.post(url, headers=headers, json=data)
-            else:
+            logging.info(f"[API Request] make_request_with_token - 方法: {method}, 路径: {path}, 数据: {data}")
+            
+            # 根据 method 参数选择请求方式
+            if method == "GET":
                 response = self.session.get(url, headers=headers)
+            elif method == "POST":
+                response = self.session.post(url, headers=headers, json=data)
+            elif method == "PUT":
+                response = self.session.put(url, headers=headers, json=data)
+            else:
+                logging.error(f"[API Error] make_request_with_token - 不支持的请求方法: {method}")
+                return None
+
             logging.info(f"[API Response] make_request_with_token - 状态码: {response.status_code}")
+            
             if response.status_code == 200:
                 response_data = response.json()
                 logging.info(f"[API Response] make_request_with_token - 成功: {response_data}")
@@ -334,7 +343,7 @@ class FlaskServer:
             'device_body':'realman',
             'device_code':unique_code
         }
-        response_data = self.make_request_with_token('eai/device/register', data)
+        response_data = self.make_request_with_token('eai/device/register', data, method="POST")
         logging.info(response_data)
         if response_data['code'] == 200:
             machine_id = response_data['data']['device_id']
@@ -394,7 +403,7 @@ class FlaskServer:
                 data.update(self.machine_information)
                 if abs(time.time() - self.machine_information_timestamp) > 80:
                     self.set_is_connect_false(data) 
-                response_data = self.make_request_with_token('eai/device/update_device_information', data)
+                response_data = self.make_request_with_token('eai/device/update_device_information', data, method="PUT")
                 logging.info(f"设备信息更新到平台反馈：{response_data}")
             else:
                 logging.warning(f"设备未上报信息")
@@ -462,7 +471,7 @@ class FlaskServer:
         self.app.add_url_rule('/robot/stream_info', 'robot_get_video_list', self.robot_get_video_list, methods=['POST'])
         self.app.add_url_rule('/robot/response', 'robot_response', self.robot_response, methods=['POST'])
         self.app.add_url_rule('/robot/get_task_steps', 'get_task_steps', self.get_task_steps, methods=['GET'])
-        self.app.add_url_rule('/robot/update_machine_information', 'update_machine_information', self.update_machine_information, methods=['GET'])
+        self.app.add_url_rule('/robot/update_machine_information', 'update_machine_information', self.update_machine_information, methods=['POST'])
         
         # WebSocket事件
         self.socketio.on_event('connect', self.handle_connect)
@@ -1070,7 +1079,7 @@ class FlaskServer:
             logging.debug(f"[API] upload_start - 请求数据: {data}")
             
             data['transfer_type'] = 'local_to_nas'
-            self.make_request_with_token('eai/dts/upload/start', data)
+            self.make_request_with_token('eai/dts/upload/start', data, method="POST")
             logging.info("[API] upload_start - 上传开始通知处理完成")
             return jsonify({}), 200
         except Exception as e:
@@ -1084,7 +1093,7 @@ class FlaskServer:
             print(data)
             logging.debug(f"[API] upload_start - 请求数据: {data}")
             
-            self.make_request_with_token('eai/dts/upload/start', data)
+            self.make_request_with_token('eai/dts/upload/start', data, method="POST")
             logging.info("[API] upload_start - 上传开始通知处理完成")
             return jsonify({}), 200
         except Exception as e:
@@ -1096,7 +1105,7 @@ class FlaskServer:
             logging.info("[API] upload_finish - 上传完成通知")
             data = request.get_json()
             logging.debug(f"[API] upload_finish - 请求数据: {data}")
-            self.make_request_with_token('eai/dts/upload/complete', data)
+            self.make_request_with_token('eai/dts/upload/complete', data, method="POST")
             logging.info("[API] upload_finish - 上传完成通知处理完成")
             return jsonify({}), 200
         except Exception as e:
@@ -1115,7 +1124,7 @@ class FlaskServer:
                 "transfer_type": "local_to_nas",     
                 "status": "SUCCESS" 
             }
-            self.make_request_with_token('eai/dts/upload/complete', response_data)
+            self.make_request_with_token('eai/dts/upload/complete', response_data, method="POST")
             logging.info("[API] upload_finish - 上传完成通知处理完成")
             return jsonify({}), 200
         except Exception as e:
@@ -1144,7 +1153,7 @@ class FlaskServer:
                     "status": "FAILED",
                     "expand": '{"nas_failed_msg":"网络通讯错误"}' 
                 }
-            self.make_request_with_token('eai/dts/upload/complete', response_data)
+            self.make_request_with_token('eai/dts/upload/complete', response_data, method="POST")
             logging.info("[API] upload_fail - 上传失败通知处理完成")
             return jsonify({}), 200
         except Exception as e:
@@ -1158,7 +1167,7 @@ class FlaskServer:
             logging.debug(f"[API] upload_process - 请求数据: {data}")
             
             data['transfer_type'] = 'local_to_nas'
-            self.make_request_with_token('eai/dts/upload/process', data)
+            self.make_request_with_token('eai/dts/upload/process', data, method="POST")
             logging.info("[API] upload_process - 上传进度通知处理完成")
             return jsonify({}), 200
         except Exception as e:
