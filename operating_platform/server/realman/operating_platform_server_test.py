@@ -143,6 +143,10 @@ class FlaskServer:
             "msg": None
         }
         
+        self.response_start_replay = {
+            "timestamp": time.time(),
+            "msg": None
+        }
         # 注册路由
         self.register_routes()
 
@@ -433,7 +437,10 @@ class FlaskServer:
         self.app.add_url_rule('/api/finish_collection', 'finish_collection', self.finish_collection, methods=['POST'])
         self.app.add_url_rule('/api/discard_collection', 'discard_collection', self.discard_collection, methods=['POST'])
         self.app.add_url_rule('/api/submit_collection', 'submit_collection', self.submit_collection, methods=['POST'])
-
+        
+        # 回放
+        self.app.add_url_rule('/api/start_replay', 'start_replay', self.start_replay, methods=['POST'])
+        
         # 手动上传
         self.app.add_url_rule('/api/manual_upload_nas', 'manual_upload_nas', self.manual_upload_nas, methods=['POST']) 
         self.app.add_url_rule('/api/manual_upload_ks3', 'manual_upload_ks3', self.manual_upload_ks3, methods=['GET']) 
@@ -892,6 +899,62 @@ class FlaskServer:
                 "code": 500,
                 "data": {},
                 "msg": str(e)
+            }
+            return jsonify(response_data), 500
+        
+    def start_replay(self):
+        """处理开始回放的API请求"""
+        try:
+            logging.info("[API] start_replay - 开始回放请求")
+            request_data = request.get_json()
+            logging.debug(f"[API] start_replay - 请求数据: {request_data}")
+            
+            # 发送开始回放指令给机器人
+            start_time = time.time()
+            self.send_message_to_robot(
+                self.robot_sid,
+                message={'cmd': 'start_replay', 'msg': request_data}  # 指令改为 start_replay
+            )
+            # 等待机器人响应（最多15秒）
+            while True:
+                current_time = time.time()
+                elapsed_time = current_time - start_time
+                # 检查是否收到有效响应（15秒内）
+                if 0 < self.response_start_replay.get("timestamp", 0) - start_time < 5:
+                    if self.response_start_replay.get('msg') == "success":
+                        logging.info("[API] start_replay - 回放启动成功")
+                        response_data = {
+                            "code": 200,
+                            "data": self.response_start_replay['data'],
+                            "msg": "回放启动成功"
+                        }
+                        return jsonify(response_data), 200
+                    else:
+                        error_msg = self.response_start_replay.get('msg', "未知错误")
+                        logging.warning(f"[API] start_replay - 回放启动失败: {error_msg}")
+                        response_data = {
+                            "code": 400,
+                            "data": {},
+                            "msg": error_msg
+                        }
+                        return jsonify(response_data), 200
+                else:
+                    time.sleep(0.02)  # 避免CPU空转
+                # 超时处理
+                if elapsed_time > 5:
+                    logging.warning("[API] start_replay - 机器人响应超时")
+                    response_data = {
+                        "code": 408,  # 408 表示请求超时
+                        "data": {},
+                        "msg": "机器人响应超时"
+                    }
+                    return jsonify(response_data), 200
+        except Exception as e:
+            logging.error(f"[API Error] start_replay - 异常: {str(e)}")
+            response_data = {
+                "code": 500,
+                "data": {},
+                "msg": f"服务器内部错误: {str(e)}"
             }
             return jsonify(response_data), 500
     

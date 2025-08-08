@@ -7,6 +7,7 @@ from collections import OrderedDict
 import shutil
 from typing import List, Dict, Union, Optional
 from robot_data_uploader.collect_uploader import BaaiRobotDataUploader
+from robot_data_uploader.config import UPLOAD_TARGET
 from upload_to_nas import get_day_before_yesterday_date, get_yesterday_date, get_today_date
 
 
@@ -167,22 +168,26 @@ class RobotDataProcessor:
         """
         img_path_list = []
         video_path_list = []
+        label_video_path_list = []
         
         try:
             entries = os.listdir(camera_images_path)
             for episode_index in entries:
                 img_path = os.path.join(camera_images_path, episode_index)
                 video_name = episode_index + '.avi'
+                label_video_name = episode_index + '.mp4'
                 video_path = os.path.join(each_task_path, 'videos', 'chunk-000',camera_images, video_name)
+                label_video_path = os.path.join(each_task_path, 'label', 'chunk-000',camera_images, label_video_name)
                 img_path_list.append(img_path)
                 video_path_list.append(video_path)
+                label_video_path_list.append(label_video_path)
             
             if len(img_path_list) != len(video_path_list):
                 print("[ERROR] 图像和视频路径数量不匹配")
                 return [], []
                 
             print(f"[DEBUG] 找到 {len(img_path_list)} 组图像和视频路径")
-            return img_path_list, video_path_list
+            return img_path_list, video_path_list,label_video_path_list
         except Exception as e:
             print(f"[ERROR] 获取路径列表失败: {str(e)}")
             return [], []
@@ -229,6 +234,50 @@ class RobotDataProcessor:
         except Exception as e:
             print(f"[ERROR] 普通视频编码失败: {str(e)}")
             return False
+        
+    def encode_label_video_frames(self, imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int) -> bool:
+        """
+        编码普通视频帧
+        
+        Args:
+            imgs_dir (Union[Path, str]): 图像目录
+            video_path (Union[Path, str]): 输出视频路径
+            fps (int): 帧率
+            
+        Returns:
+            bool: 是否成功
+        """
+        print(f"[INFO] 开始编码普通视频: {video_path}")
+        try:
+            imgs_dir = Path(imgs_dir)
+            video_path = Path(video_path)
+            video_path.parent.mkdir(parents=True, exist_ok=True)
+            #  ("-vcodec", "libx264"),
+
+            ffmpeg_args = OrderedDict([
+                ("-f", "image2"),
+                ("-r", str(fps)),
+                ("-i", str(imgs_dir / "frame_%06d.jpg")),
+                ("-vcodec", "libx264"),
+                ("-pix_fmt", "yuv420p"),
+                ("-g", "20"),
+                ("-crf", "23"),
+                ("-loglevel", "error"),
+            ])
+
+            ffmpeg_cmd = ["ffmpeg"] + [item for pair in ffmpeg_args.items() for item in pair] + [str(video_path)]
+            print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_cmd)}")
+            
+            subprocess.run(ffmpeg_cmd, check=True, stdin=subprocess.DEVNULL)
+            
+            if not video_path.exists():
+                raise OSError(f"视频文件未生成: {video_path}")
+                
+            print(f"[INFO] 普通视频编码成功: {video_path}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] 普通视频编码失败: {str(e)}")
+            return False
     
     def encode_depth_video_frames(self, imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int) -> bool:
         """
@@ -254,6 +303,7 @@ class RobotDataProcessor:
                 "-r", str(fps),
                 "-i", str(imgs_dir / "frame_%06d.png"),
                 "-vcodec", "ffv1",
+                "-loglevel", "error",
                 "-pix_fmt", "gray16le",
                 "-y",
                 str(video_path)
@@ -444,7 +494,7 @@ class RobotDataProcessor:
                     for camera_images in entries_2:
                         camera_images_path = os.path.join(each_images_path, camera_images)
                         if os.path.isdir(camera_images_path):
-                            img_list, video_list = self.get_img_video_path(each_task_path, camera_images, camera_images_path)
+                            img_list, video_list,label_video_path_list = self.get_img_video_path(each_task_path, camera_images, camera_images_path)
                             
                             if 'depth' in camera_images:
                                 # 处理深度图像
@@ -457,34 +507,41 @@ class RobotDataProcessor:
                                 # 处理普通图像
                                 if img_list:
                                     for img_path, video_path in zip(img_list, video_list):
-                                        print(f"[INFO] 处理普通图像: {img_path} -> {video_path}")
+                                        print(f"[INFO] 处理普通图像avi: {img_path} -> {video_path}")
                                         if not self.encode_video_frames(img_path, video_path, fps):
+                                            ffmpeg_encode_flag = False
+                                            
+                                    for img_path, label_video_path in zip(img_list, label_video_path_list):
+                                        print(f"[INFO] 处理普通图像mp4: {img_path} -> {label_video_path}")
+                                        if not self.encode_label_video_frames(img_path, label_video_path, fps):
                                             ffmpeg_encode_flag = False
                 except Exception as e:
                     print(f"[ERROR] 处理任务 {task_data_name} 失败: {str(e)}")
                     ffmpeg_encode_flag = False
             else:
                 # 没有images目录，检查上传状态
-                status = self.read_common_record_json_status(each_task_path)
-                if status == 1:
-                    # 如果是前天数据且已上传成功，则删除
-                    # 这里假设date_data是前天日期，实际逻辑可能需要调整
-                    self.delete_directory(each_task_path)
-                continue
-            
+                if date_data == get_day_before_yesterday_date():
+                    status = self.read_common_record_json_status(each_task_path)
+                    if status == 1:
+                        # 如果是前天数据且已上传成功，则删除
+                        # 这里假设date_data是前天日期，实际逻辑可能需要调整
+                        self.delete_directory(each_task_path)
+                    continue
+                
             # 上传处理后的数据
             if ffmpeg_encode_flag:
                 if 'images' in subdirectories_1:
                     self.delete_directory(os.path.join(each_task_path, 'images'))
                 
-                target_path = os.path.join('collect', task_data_name, machine_id, date_data)
+                target_path = os.path.join(UPLOAD_TARGET,'collect', task_data_name, machine_id, date_data)
+                target_path_sdk = os.path.join('collect', task_data_name, machine_id, date_data)
                 
                 # 通知服务器开始上传
                 start_data = self.start_upload_data(task_id, task_data_id, each_task_path, target_path)
                 self.local_server_request('api/upload_start_ks3', start_data)
                 
                 # 执行上传
-                if self.upload_dir(each_task_path, target_path):
+                if self.upload_dir(each_task_path, target_path_sdk):
                     # 上传成功
                     finish_data = self.finish_upload_data(task_id, task_data_id, 'SUCCESS')
                     self.local_server_request('api/upload_finish_ks3', finish_data)
@@ -493,7 +550,7 @@ class RobotDataProcessor:
                     # 上传失败
                     finish_data = self.finish_upload_data(
                         task_id, task_data_id, 'FAILED', 
-                        {"ks3_failed_msg": "网络通信错误"}
+                        '{"ks3_failed_msg": "网络通信错误"}'
                     )
                     self.local_server_request('api/upload_finish_ks3', finish_data)
                     self.modify_json(os.path.join(each_task_path, 'meta', 'common_record.json'), 2)
