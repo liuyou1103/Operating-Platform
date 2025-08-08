@@ -403,7 +403,7 @@ class FlaskServer:
                 data.update(self.machine_information)
                 if abs(time.time() - self.machine_information_timestamp) > 80:
                     self.set_is_connect_false(data) 
-                response_data = self.make_request_with_token('eai/device/update_device_information', data, method="PUT")
+                response_data = self.make_request_with_token('eai/device', data, method="PUT")
                 logging.info(f"设备信息更新到平台反馈：{response_data}")
             else:
                 logging.warning(f"设备未上报信息")
