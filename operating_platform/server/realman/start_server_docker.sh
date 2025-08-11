@@ -4,6 +4,7 @@
 CONTAINER_NAME="baai_flask_server"      # 容器名称
 IMAGE_NAME="baai-flask-server-release"  # 镜像名称
 #PORTS="-p 8088:8088"                    # 端口映射
+ENCODE="-e PYTHONIOENCODING=utf-8"
 PORTS="--network host"
 PRIVILEGED="--privileged=true"          # 特权模式（谨慎使用）
 RESTART_POLICY="--restart unless-stopped" # 重启策略
@@ -46,6 +47,7 @@ else
     echo "创建并启动新容器 '${CONTAINER_NAME}'..."
     sudo docker run -d \
         --name ${CONTAINER_NAME} \
+        ${ENCODE} \
         ${PRIVILEGED} \
         ${RESTART_POLICY} \
         ${PORTS} \
