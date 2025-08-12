@@ -1269,7 +1269,7 @@ class FlaskServer:
                     "timestamp": time.time(),
                     "msg": data["msg"]
                 }
-            elif data["cmd"] == "submit_collection":
+            elif data["cmd"] == "start_replay":
                 self.response_start_replay = {
                     "timestamp": time.time(),
                     "msg": data["msg"],
