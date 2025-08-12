@@ -47,6 +47,8 @@ else
     echo "创建并启动新容器 '${CONTAINER_NAME}'..."
     sudo docker run -d \
         --name ${CONTAINER_NAME} \
+        -e LANG=C.UTF-8 \
+        -e LC_ALL=C.UTF-8 \
         ${ENCODE} \
         ${PRIVILEGED} \
         ${RESTART_POLICY} \

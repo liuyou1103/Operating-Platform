@@ -526,7 +526,7 @@ class RobotDataProcessor:
                         # 如果是前天数据且已上传成功，则删除
                         # 这里假设date_data是前天日期，实际逻辑可能需要调整
                         self.delete_directory(each_task_path)
-                    continue
+                continue
                 
             # 上传处理后的数据
             if ffmpeg_encode_flag:
