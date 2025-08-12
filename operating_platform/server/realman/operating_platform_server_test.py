@@ -145,7 +145,9 @@ class FlaskServer:
         
         self.response_start_replay = {
             "timestamp": time.time(),
-            "msg": None
+            "msg": None,
+            "data": None
+
         }
         # 注册路由
         self.register_routes()
@@ -1266,6 +1268,12 @@ class FlaskServer:
                 self.response_submit_collection = {
                     "timestamp": time.time(),
                     "msg": data["msg"]
+                }
+            elif data["cmd"] == "submit_collection":
+                self.response_start_replay = {
+                    "timestamp": time.time(),
+                    "msg": data["msg"],
+                    "data": data["data"]
                 }
             logging.info("[API] robot_response - 响应处理完成")
             return jsonify({}), 200
