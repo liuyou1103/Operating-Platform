@@ -95,7 +95,7 @@ class FlaskServer:
         CORS(self.app)
 
         #self.web = "http://120.92.116.59:80/api"
-        self.web = "http://120.92.91.171:30083/api"
+        self.web = "http://120.92.91.171/api"
         self.session = requests.Session() 
         self.token = None
 
@@ -218,15 +218,15 @@ class FlaskServer:
         logging.info("[API Request] login - 开始登录云平台")
         url = f"{self.web}/login"
         
-        data = {
-            "username": "eai_realman_collect",
-            "password": "Realman@2025"
-        }
-         
         # data = {
-        #     "username": "eai_data_collect",
-        #     "password": "eai_collect@2025"
+        #     "username": "eai_realman_collect",
+        #     "password": "Realman@2025"
         # }
+         
+        data = {
+            "username": "eai_data_collect",
+            "password": "eai_collect@2025"
+        }
         
         try:
             response = self.session.post(url, json=data)
@@ -309,7 +309,7 @@ class FlaskServer:
             logging.error("[Task] local_to_ks3 - 任务执行失败，登录不成功")
 
     def time_job(self):
-        schedule.every().day.at("23:00").do(self.local_to_ks3)
+        schedule.every().day.at("23:00").do(self.local_to_nas)
         logging.info("[Task] time_job - 定时任务已启动，每天23:00执行...")
         try:
             while True:
@@ -979,12 +979,6 @@ class FlaskServer:
 
     def manual_upload_nas(self):
         try:
-            response_data = {
-                        "code": 601,
-                        "data": {},
-                        "msg": '数据上传中'
-                    }
-            return jsonify(response_data), 200
             logging.info("[API] manual_upload_nas - 手动上传NAS请求")
             with self.upload_lock:
                 if self.upload_nas_flag:
