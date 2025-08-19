@@ -589,7 +589,7 @@ def upload():
        
         if not os.path.exists(directory_path):
             print("数据路径不存在")
-            return  
+            continue 
         entries = os.listdir(directory_path) # 各任务列表
         # 筛选出子目录
         subdirectories = [entry for entry in entries if os.path.isdir(os.path.join(directory_path, entry))] # 仅筛选目录
@@ -620,6 +620,8 @@ def upload():
                         last_epid = data['last_upload_id']
                         if task_number <= last_epid: # 判断当前数据是否新增
                             print("没有需要上传的数据")
+                            if date_data == get_day_before_yesterday_date():
+                                delete_directory(each_task_path)
                             continue
                     else:
                         last_epid = 0
@@ -705,8 +707,6 @@ def upload():
                                 cloud_data_id = json_object_list[data_id]["dataid"]
                                 local_file_list = []
                                 nas_file_list = []
-                                local_meta_list = []
-                                nas_meta_list = []
                                 local_video_list = []
                                 nas_video_list = []
                                 ffmpeg_encode_flag = True
@@ -744,9 +744,9 @@ def upload():
                                                                 
                                 for task_part in subdirectories_1:
                                     if task_part == "meta":
-                                        if data_id == last_epid:
-                                            local_meta_list.extend([local_nas_info_path, local_nas_meta_file_path,local_nas_episodes_path,local_episodes_stats_path])
-                                            nas_meta_list.extend([nas_info_file_path,nas_meta_file_path,nas_episodes_file_path,nas_episodes_stats_file_path])
+                                        if data_id == task_number - 1:
+                                            local_file_list.extend([local_nas_info_path, local_nas_meta_file_path,local_nas_episodes_path,local_episodes_stats_path])
+                                            nas_file_list.extend([nas_info_file_path,nas_meta_file_path,nas_episodes_file_path,nas_episodes_stats_file_path])
                                     elif task_part == "data":
                                         fold_path = os.path.join(each_task_path,task_part,"chunk-000")
                                         local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,last_episode_id,task_data_name,middle_name,0)
@@ -777,8 +777,8 @@ def upload():
                                
                                 print(local_video_list)
                                 print(nas_video_list)
-                                local_file_list.extend([local_video_list,local_meta_list])
-                                nas_file_list.extend([nas_video_list,nas_meta_list])
+                                local_file_list.extend(local_video_list)
+                                nas_file_list.extend(nas_video_list)
                                 task_msg = {
                                     "task_id":int(task_id),
                                     "task_data_id":int(cloud_data_id),
@@ -798,8 +798,6 @@ def upload():
                                 cloud_data_id = json_object_list[data_id]["dataid"]
                                 local_file_list = []
                                 nas_file_list = []
-                                local_meta_list = []
-                                nas_meta_list = []
                                 local_video_list = []
                                 nas_video_list = []
                                 
@@ -837,15 +835,15 @@ def upload():
                                             
                                 for task_part in subdirectories_1:
                                     if task_part == "meta":
-                                        if data_id == 0:
+                                        if data_id == task_number - 1:
                                             fold_path = os.path.join(each_task_path,task_part)
                                             local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,0,task_data_name,middle_name,1)
                                             if isinstance(local_file, str):
-                                                local_meta_list.append(local_file)
-                                                nas_meta_list.append(nas_file)
+                                                local_file_list.append(local_file)
+                                                nas_file_list.append(nas_file)
                                             elif isinstance(local_file,list):
-                                                local_meta_list.extend(local_file)
-                                                nas_meta_list.extend(nas_file)
+                                                local_file_list.extend(local_file)
+                                                nas_file_list.extend(nas_file)
                                                 
                                     elif task_part == "data":
                                         fold_path = os.path.join(each_task_path,task_part,"chunk-000")
@@ -881,8 +879,8 @@ def upload():
                                 
                                 print(local_video_list)
                                 print(nas_video_list)
-                                local_file_list.extend([local_video_list,local_meta_list])
-                                nas_file_list.extend([nas_video_list,nas_meta_list])
+                                local_file_list.extend(local_video_list)
+                                nas_file_list.extend(nas_video_list)
                                 task_msg = {
                                     "task_id":int(task_id),
                                     "task_data_id":int(cloud_data_id),
