@@ -9,6 +9,7 @@ from typing import List, Dict, Union, Optional
 from robot_data_uploader.collect_uploader import BaaiRobotDataUploader
 from robot_data_uploader.config import UPLOAD_TARGET
 from upload_to_nas import get_day_before_yesterday_date, get_yesterday_date, get_today_date
+import datetime
 
 
 class RobotDataProcessor:
@@ -61,7 +62,11 @@ class RobotDataProcessor:
         """
         data = {"task_id": str(task_id)}
         self.local_server_request('api/upload_task_id', data)
-    
+    def get_date_offset(self, days_offset):
+        """获取指定偏移量的日期（格式：YYYYMMDD）"""
+        target_date = datetime.datetime.now() - datetime.timedelta(days=days_offset)
+        return target_date.strftime("%Y%m%d")
+
     def read_common_record_json(self, each_task_path: str) -> Dict:
         """
         读取common_record.json文件
@@ -520,7 +525,7 @@ class RobotDataProcessor:
                     ffmpeg_encode_flag = False
             else:
                 # 没有images目录，检查上传状态
-                if date_data == get_day_before_yesterday_date():
+                if date_data == self.get_date_offset(6):
                     status = self.read_common_record_json_status(each_task_path)
                     if status == 1:
                         # 如果是前天数据且已上传成功，则删除
@@ -567,12 +572,11 @@ class RobotDataProcessor:
         """
         self.set_token(token)
         
-        
-        date_functions = [
-            ("前天数据", get_day_before_yesterday_date),
-            ("昨天数据", get_yesterday_date),
-            ("今天数据", get_today_date)
-        ]
+        date_functions = []
+        for i in range(7):
+            date_data = self.get_date_offset(i)  # i=0（今天）到 i=6（6 天前）
+            date_functions.append(("数据", date_data))  # 每个条目绑定不同的日期
+ 
         
         for date_name, date_func in date_functions:
             print(f"\n[INFO] 开始处理 {date_name}")
