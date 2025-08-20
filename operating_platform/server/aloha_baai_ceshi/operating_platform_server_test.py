@@ -18,7 +18,7 @@ import requests
 import json
 import upload_to_nas
 import uuid
-from upload_to_ks3 import RobotDataProcessor
+# from upload_to_ks3 import RobotDataProcessor
 
 
 
@@ -119,11 +119,11 @@ class FlaskServer:
         self.upload_ks3_flag = False
         self.upload_ks3_id = '0'
         self._running = False
-        self.processor = RobotDataProcessor(
-            fold_path="/home/rm/DoRobot/dataset/",
-            server_url="http://localhost:8088"
-        )
-        
+        # self.processor = RobotDataProcessor(
+        #     fold_path="/home/rm/DoRobot/dataset/",
+        #     server_url="http://localhost:8088"
+        # )
+        self.processor = None
         # 响应模板
         self.response_start_collection = {
             "timestamp": time.time(),
@@ -343,7 +343,7 @@ class FlaskServer:
 
     def register_machine(self,unique_code):
         data = {
-            'device_body':'pika',
+            'device_body':'aloha',
             'device_code':unique_code
         }
         response_data = self.make_request_with_token('eai/device/register', data, method="POST")
