@@ -774,7 +774,7 @@ def upload():
                                         elif isinstance(local_file,list):
                                             local_video_list.extend(local_file)
                                             nas_video_list.extend(nas_file)
-                                    elif task_part == "audios":
+                                    elif task_part == "audio":
                                         fold_path = os.path.join(each_task_path,task_part,"chunk-000")
                                         local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,last_episode_id,task_data_name,middle_name,0)
                                         if isinstance(local_file, str):
@@ -884,7 +884,7 @@ def upload():
                                         elif isinstance(local_file,list):
                                             local_video_list.extend(local_file)
                                             nas_video_list.extend(nas_file)    
-                                    elif task_part == "audios":
+                                    elif task_part == "audio":
                                         fold_path = os.path.join(each_task_path,task_part,"chunk-000")
                                         local_file, nas_file = get_nth_file_in_subdirectories(fold_path,data_id,last_episode_id,task_data_name,middle_name,0)
                                         if isinstance(local_file, str):
@@ -893,7 +893,6 @@ def upload():
                                         elif isinstance(local_file,list):
                                             local_video_list.extend(local_file)
                                             nas_video_list.extend(nas_file)
-                               
                                 #print(local_file_list)
                                 #print(nas_file_list)
                                 
