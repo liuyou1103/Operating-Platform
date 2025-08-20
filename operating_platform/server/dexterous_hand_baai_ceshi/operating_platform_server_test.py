@@ -343,7 +343,7 @@ class FlaskServer:
 
     def register_machine(self,unique_code):
         data = {
-            'device_body':'dexterous_hand',
+            'device_body':'pika',
             'device_code':unique_code
         }
         response_data = self.make_request_with_token('eai/device/register', data, method="POST")
