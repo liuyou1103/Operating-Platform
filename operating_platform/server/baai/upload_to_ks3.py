@@ -13,7 +13,7 @@ import datetime
 
 
 class RobotDataProcessor:
-    def __init__(self, fold_path: str = "/home/rm/DoRobot/dataset/", server_url: str = "http://localhost:8080"):
+    def __init__(self, fold_path: str = "/home/robot/dataset/", server_url: str = "http://localhost:8088"):
         """
         初始化机器人数据处理类
         

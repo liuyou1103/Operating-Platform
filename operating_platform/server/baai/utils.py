@@ -1,6 +1,7 @@
 import os
 import datetime
 import json
+import yaml
 
 
 def get_today_date():
@@ -145,31 +146,17 @@ def data_duration(fold_path,data):  # 文件时长单位(s)
     except Exception as e:
         print(str(e))
         return 30
+
+def setup_from_yaml():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    yaml_path = os.path.join(script_dir, 'setup.yaml')
+    if os.path.exists(yaml_path):
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            config_dict = yaml.safe_load(f)
+        return config_dict
     
 if __name__ == '__main__':
-    fold_path = '/home/liuyou/Documents'
-    data = {
-        "task_id": "187",
-        "task_name": "刀具安全取放",
-        "task_data_id": "2043",
-        "collector_id":"001",
-        "task_steps": [
-            {
-                "doruation": "10",
-                "instruction": "put"
-            },
-            {
-                "doruation": "2",
-                "instruction": "close"
-            },
-            {
-                "doruation": "5",
-                "instruction": "clean"
-            }
-        ]
-    } # 之后作为参数传递
-    print(data_size(fold_path,data))
-    print(data_duration(fold_path,data))
+    print(setup_from_yaml())
         
 
 

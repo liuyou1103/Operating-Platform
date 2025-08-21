@@ -13,10 +13,9 @@ CURRENT_USER=$(whoami)
 
 # 动态构建卷挂载路径
 VOLUMES=(
-    "-v /home/${CURRENT_USER}/Documents/Operating-Platform/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/"
-    "-v /home/${CURRENT_USER}/Documents/server/release/Operating-Platform/operating_platform/server/pika_baai_ceshi/:/app/code/"
+    "-v /home/${CURRENT_USER}/Documents/Operating-Platform/dataset:/home/robot/dataset/"
+    "-v /home/${CURRENT_USER}/Documents/server/release/Operating-Platform/operating_platform/server/baai/:/app/code/"
     "-v /home/${CURRENT_USER}/.config/:/home/machine/.config/"
-    "-v /home/rm/DoRobot/dataset/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/dataset/"
 )
 
 # ====================== 逻辑部分 ======================
