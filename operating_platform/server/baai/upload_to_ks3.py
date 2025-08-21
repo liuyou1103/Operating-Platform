@@ -8,7 +8,6 @@ import shutil
 from typing import List, Dict, Union, Optional
 from robot_data_uploader.collect_uploader import BaaiRobotDataUploader
 from robot_data_uploader.config import UPLOAD_TARGET
-from upload_to_nas import get_day_before_yesterday_date, get_yesterday_date, get_today_date
 import datetime
 
 

@@ -23,8 +23,8 @@ from utils import setup_from_yaml
 
 
 
-MACHINE_ID_PATH = '/home/machine/.config/baai_platform/machine_code'
-UNIQUE_CODE_PATH = '/home/machine/.config/baai_platform/unique_code'
+MACHINE_ID_PATH = '/home/liuyou/.config/baai_platform/machine_code'
+UNIQUE_CODE_PATH = '/home/liuyou/.config/baai_platform/unique_code'
 
 
 class VideoStream:
@@ -97,7 +97,7 @@ class FlaskServer:
             self.web = config_dict['platform_server_ip_dev']
         self.port = config_dict['device_server_port']
         self.upload_type = config_dict['upload_type']
-        self.upload_time = config_dict['upload_time']
+        self.upload_time = str(config_dict['upload_time'])
         self.robot_type = config_dict['robot_type']
 
         self.app = Flask(__name__)
