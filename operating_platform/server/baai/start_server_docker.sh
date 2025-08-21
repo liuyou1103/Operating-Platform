@@ -2,7 +2,7 @@
 
 # ====================== 配置参数（可修改） ======================
 CONTAINER_NAME="baai_flask_server"      # 容器名称
-IMAGE_NAME="baai-flask-server-release"  # 镜像名称
+IMAGE_NAME="baai-flask-server"  # 镜像名称
 #PORTS="-p 8088:8088"                    # 端口映射
 ENCODE="-e PYTHONIOENCODING=utf-8"
 PORTS="--network host"
@@ -13,7 +13,7 @@ RESTART_POLICY="--restart unless-stopped" # 重启策略
 CURRENT_USER=$(whoami)
 
 # 动态构建卷挂载路径
-VOLUMES="-v /home/${CURRENT_USER}/Documents/Operating-Platform/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/"
+VOLUMES="-v /home/${CURRENT_USER}/Documents/Operating-Platform/dataset/:/home/robot/dataset/"
 VOLUMES2="-v /home/${CURRENT_USER}/Documents/server/release/Operating-Platform/operating_platform/server/aloha_baai_ceshi/:/app/code/"
 VOLUMES3="-v /home/${CURRENT_USER}/.config/:/home/machine/.config/"
 #VOLUMES4="-v /home/rm/DoRobot/dataset/:/home/agilex/Documents/Ryu-Yang/Operating-Platform/dataset/"

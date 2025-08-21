@@ -1,4 +1,4 @@
-name: baai_server
+name: op
 channels:
   - conda-forge
   - defaults
@@ -25,4 +25,4 @@ dependencies:
   - tzdata=2022f
   - wheel=0.38.4
   - xz=5.2.6
-prefix: /home/rm/anaconda3/envs/baai_server
+prefix: /home/liuyou/anaconda3/envs/op
