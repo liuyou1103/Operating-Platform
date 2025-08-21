@@ -13,8 +13,6 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y ffmpeg
-
 # 安装 Miniconda（国内镜像加速）
 RUN wget -q https://mirrors.bfsu.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
     bash miniconda.sh -b -p /opt/miniconda && \
@@ -31,7 +29,7 @@ RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkg
     conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # 使用 conda 安装 ffmpeg
-#RUN conda install -y -c conda-forge ffmpeg
+RUN conda install -y -c conda-forge ffmpeg
 # 创建 Conda 环境（从 YAML 文件）
 WORKDIR /app
 COPY environment.yml .
@@ -43,13 +41,13 @@ COPY robot_uploader-1.0.0-py3-none-any.whl /tmp/
 # 安装纯 pip 依赖（分离 Conda 与 pip 管理）
 COPY requirements.txt .
 # 安装依赖时明确使用 Conda 环境的 pip
-RUN /opt/miniconda/envs/op/bin/pip install --no-cache-dir \
+RUN /opt/miniconda/envs/baai_server/bin/pip install --no-cache-dir \
     /tmp/robot_uploader-1.0.0-py3-none-any.whl && \
-    /opt/miniconda/envs/op/bin/pip install --no-cache-dir -r requirements.txt \
+    /opt/miniconda/envs/baai_server/bin/pip install --no-cache-dir -r requirements.txt \
     -i https://mirrors.aliyun.com/pypi/simple
 
 # 设置运行时环境变量（关键！）
-ENV PATH="/opt/miniconda/envs/op/bin:$PATH"
+ENV PATH="/opt/miniconda/envs/baai_server/bin:$PATH"
 
 # 创建代码目录（避免挂载时覆盖 /app）
 RUN mkdir -p /app/code

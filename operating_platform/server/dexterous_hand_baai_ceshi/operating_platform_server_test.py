@@ -16,14 +16,15 @@ from flask_socketio import SocketIO, emit
 import schedule
 import requests
 import json
-import upload_to_nas
+from upload_to_nas import DataUploader
 import uuid
 from upload_to_ks3 import RobotDataProcessor
+from utils import setup_from_yaml
 
 
 
-MACHINE_ID_PATH = '/home/machine/.config/baai_platform/machine_code'
-UNIQUE_CODE_PATH = '/home/machine/.config/baai_platform/unique_code'
+MACHINE_ID_PATH = '/home/liuyou/.config/baai_platform/machine_code'
+UNIQUE_CODE_PATH = '/home/liuyou/.config/baai_platform/unique_code'
 
 
 class VideoStream:
@@ -89,13 +90,20 @@ def get_machine_id():
 class FlaskServer:
     def __init__(self):
         # 初始化Flask应用
+        config_dict = setup_from_yaml()
+        if config_dict['device_server_type'] == 'release':
+            self.web = config_dict['platform_server_ip_release']
+        else:
+            self.web = config_dict['platform_server_ip_dev']
+        self.port = config_dict['device_server_port']
+        self.upload_type = config_dict['upload_type']
+        self.upload_time = str(config_dict['upload_time'])
+        self.robot_type = config_dict['robot_type']
+
         self.app = Flask(__name__)
-        self.app.secret_key = 'agilex'  # 暂时密钥
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         CORS(self.app)
 
-        #self.web = "http://120.92.116.59:80/api"
-        self.web = "http://120.92.91.171/api"
         self.session = requests.Session() 
         self.token = None
 
@@ -119,11 +127,11 @@ class FlaskServer:
         self.upload_ks3_flag = False
         self.upload_ks3_id = '0'
         self._running = False
-        self.processor = RobotDataProcessor(
-            fold_path="/home/rm/DoRobot/dataset/",
-            server_url="http://localhost:8088"
+        self.ks3_processor = RobotDataProcessor(
+            fold_path=config_dict['device_data_path'],
+            server_url=config_dict['device_server_ip']
         )
-        
+        self.nas_processor = DataUploader()
         # 响应模板
         self.response_start_collection = {
             "timestamp": time.time(),
@@ -217,11 +225,6 @@ class FlaskServer:
         """发送登录请求"""
         logging.info("[API Request] login - 开始登录云平台")
         url = f"{self.web}/login"
-        
-        # data = {
-        #     "username": "eai_realman_collect",
-        #     "password": "Realman@2025"
-        # }
          
         data = {
             "username": "eai_data_collect",
@@ -287,7 +290,7 @@ class FlaskServer:
     def local_to_nas(self):
         logging.info(f"[Task] local_to_nas - 任务执行开始于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if self.login():
-            upload_to_nas.upload()
+            self.nas_processor.upload()
             with self.upload_lock:
                 self.upload_nas_flag = False
             logging.info("[Task] local_to_nas - 任务执行完成")
@@ -299,7 +302,7 @@ class FlaskServer:
     def local_to_ks3(self):
         logging.info(f"[Task] local_to_ks3 - 任务执行开始于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if self.login():    
-            self.processor.encode_and_upload(self.token)
+            self.ks3_processor.encode_and_upload(self.token)
             with self.upload_lock:
                 self.upload_ks3_flag = False
             logging.info("[Task] local_to_ks3 - 任务执行完成")
@@ -309,8 +312,11 @@ class FlaskServer:
             logging.error("[Task] local_to_ks3 - 任务执行失败，登录不成功")
 
     def time_job(self):
-        schedule.every().day.at("23:00").do(self.local_to_nas)
-        logging.info("[Task] time_job - 定时任务已启动，每天23:00执行...")
+        if self.upload_type == 'nas':
+            schedule.every().day.at(self.upload_time).do(self.local_to_nas)
+        else:
+            schedule.every().day.at(self.upload_time).do(self.local_to_ks3)
+        logging.info(f"[Task] time_job - 定时任务已启动，每天{self.upload_time}执行...")
         try:
             while True:
                 schedule.run_pending()
@@ -343,7 +349,7 @@ class FlaskServer:
 
     def register_machine(self,unique_code):
         data = {
-            'device_body':'pika',
+            'device_body':self.robot_type,
             'device_code':unique_code
         }
         response_data = self.make_request_with_token('eai/device/register', data, method="POST")
@@ -991,7 +997,7 @@ class FlaskServer:
                     return jsonify(response_data), 200
                 else:
                     self.upload_nas_flag = True
-                    if not upload_to_nas.nas_auth.get_auth_sid():
+                    if not self.nas_processor.nas_auth.get_auth_sid():
                         logging.error("[API] manual_upload_nas - 连接NAS异常")
                         response_data = {
                             "code": 601,
