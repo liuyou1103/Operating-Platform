@@ -2,7 +2,7 @@
 
 # ====================== 配置参数（可修改） ======================
 CONTAINER_NAME="baai_flask_server"      # 容器名称
-IMAGE_NAME="baai-flask-server-release"  # 镜像名称
+IMAGE_NAME="baai-flask-server"  # 镜像名称
 PORTS="--network host"                  # 使用主机网络
 ENCODE="-e PYTHONIOENCODING=utf-8"      # 编码设置
 PRIVILEGED="--privileged=true"          # 特权模式（谨慎使用）
@@ -13,7 +13,7 @@ CURRENT_USER=$(whoami)
 
 # 动态构建卷挂载路径
 VOLUMES=(
-    "-v /home/${CURRENT_USER}/Documents/Operating-Platform/dataset:/home/robot/dataset/"
+    "-v /home/${CURRENT_USER}/Documents/Operating-Platform/dataset/:/home/robot/dataset/"
     "-v /home/${CURRENT_USER}/Documents/server/release/Operating-Platform/operating_platform/server/baai/:/app/code/"
     "-v /home/${CURRENT_USER}/.config/:/home/machine/.config/"
 )
