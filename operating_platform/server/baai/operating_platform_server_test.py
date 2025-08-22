@@ -23,9 +23,6 @@ from utils import setup_from_yaml,get_machine_info
 
 
 
-MACHINE_ID_PATH = '/home/machine/.config/baai_platform/machine_code'
-UNIQUE_CODE_PATH = '/home/machine/.config/baai_platform/unique_code'
-
 
 class VideoStream:
     def __init__(self, stream_id, stream_name):
@@ -93,8 +90,12 @@ class FlaskServer:
         config_dict = setup_from_yaml()
         if config_dict['device_server_type'] == 'release':
             self.web = config_dict['platform_server_ip_release']
+            self.machine_id_path = config_dict['machine_id_path_release']
+            self.machine_unique_code = config_dict['machine_code_path_release']
         else:
             self.web = config_dict['platform_server_ip_dev']
+            self.machine_id_path = config_dict['machine_id_path_dev']
+            self.machine_unique_code = config_dict['machine_code_path_dev']
         self.port = config_dict['device_server_port']
         self.upload_type = config_dict['upload_type']
         self.upload_time = str(config_dict['upload_time'])
@@ -179,14 +180,14 @@ class FlaskServer:
     def save_machine_platform_id(self,machine_id,unique_code):
         """保存ID 到"""
         try:
-            os.makedirs(os.path.dirname(MACHINE_ID_PATH), exist_ok=True)  # 确保目录存在
-            with open(MACHINE_ID_PATH, "w") as f:
+            os.makedirs(os.path.dirname(self.machine_id_path), exist_ok=True)  # 确保目录存在
+            with open(self.machine_id_path, "w") as f:
                 f.write(machine_id)
-            logging.info(f"机器 ID 已保存到 {MACHINE_ID_PATH}")
-            os.makedirs(os.path.dirname(UNIQUE_CODE_PATH), exist_ok=True)  # 确保目录存在
-            with open(UNIQUE_CODE_PATH, "w") as f:
+            logging.info(f"机器 ID 已保存到 {self.machine_id_path}")
+            os.makedirs(os.path.dirname(self.machine_unique_code), exist_ok=True)  # 确保目录存在
+            with open(self.machine_unique_code, "w") as f:
                 f.write(unique_code)
-            logging.info(f"标识码 ID 已保存到 {UNIQUE_CODE_PATH}")
+            logging.info(f"标识码 ID 已保存到 {self.machine_unique_code}")
             return True
         except Exception as e:
             logging.error(f"保存 ID 失败: {e}")
@@ -194,11 +195,11 @@ class FlaskServer:
     
     def load_machine_id(self):
         """读取机器 ID"""
-        if not os.path.exists(MACHINE_ID_PATH):
+        if not os.path.exists(self.machine_id_path):
             logging.info("未找到机器 ID 文件，将生成新 ID")
             return None
         try:
-            with open(MACHINE_ID_PATH, "r") as f:
+            with open(self.machine_id_path, "r") as f:
                 machine_id = f.read().strip()
                 logging.info(f"已加载机器 ID")
                 return machine_id
@@ -208,11 +209,11 @@ class FlaskServer:
         
     def load_unique_code(self):
         """读取标识 ID"""
-        if not os.path.exists(UNIQUE_CODE_PATH):
+        if not os.path.exists(self.machine_unique_code):
             logging.info("未找到标识码 文件")
             return None
         try:
-            with open(UNIQUE_CODE_PATH, "r") as f:
+            with open(self.machine_unique_code, "r") as f:
                 unique_code = f.read().strip()
                 logging.info(f"已加载标识码 ID")
                 return unique_code
