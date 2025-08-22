@@ -956,7 +956,7 @@ class FlaskServer:
                         logging.info("[API] start_replay - 回放启动成功")
                         response_data = {
                             "code": 200,
-                            "data": self.response_start_replay['data'],
+                            "data": self.response_start_replay.get('data'),
                             "msg": "回放启动成功"
                         }
                         return jsonify(response_data), 200
