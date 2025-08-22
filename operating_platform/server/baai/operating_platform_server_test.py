@@ -132,6 +132,7 @@ class FlaskServer:
             server_url=config_dict['device_server_ip']
         )
         self.nas_processor = DataUploader()
+        self.replay_data = None
         # 响应模板
         self.response_start_collection = {
             "timestamp": time.time(),
@@ -740,6 +741,7 @@ class FlaskServer:
         try:
             logging.info("[API] start_collection - 开始采集请求")
             data = request.get_json()
+            self.replay_data = data
             logging.debug(f"[API] start_collection - 请求数据: {data}")
             if self.upload_ks3_id == str(data['task_id']):
                 response_data = {
@@ -935,7 +937,8 @@ class FlaskServer:
             logging.info("[API] start_replay - 开始回放请求")
             request_data = request.get_json()
             logging.debug(f"[API] start_replay - 请求数据: {request_data}")
-            
+            if not request_data:
+                request_data = self.replay_data
             # 发送开始回放指令给机器人
             start_time = time.time()
             self.send_message_to_robot(
