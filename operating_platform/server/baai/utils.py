@@ -155,8 +155,16 @@ def setup_from_yaml():
             config_dict = yaml.safe_load(f)
         return config_dict
     
+def get_machine_info():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    machine_txt = os.path.join(script_dir, 'machine_information.json')
+    if os.path.exists(machine_txt):
+        with open(machine_txt, "r", encoding="utf-8") as f:
+            config_dict = json.load(f)
+        return config_dict
+    
 if __name__ == '__main__':
-    print(setup_from_yaml())
+    print(get_machine_info())
         
 
 

@@ -19,7 +19,7 @@ import json
 from upload_to_nas import DataUploader
 import uuid
 from upload_to_ks3 import RobotDataProcessor
-from utils import setup_from_yaml
+from utils import setup_from_yaml,get_machine_info
 
 
 
@@ -416,6 +416,15 @@ class FlaskServer:
                 logging.info(f"设备信息更新到平台反馈：{response_data}")
             else:
                 logging.warning(f"设备未上报信息")
+                if self.robot_type == "aloha":
+                    time.sleep(10)
+                    data = {
+                            "device_id": device_id,
+                            "device_code": self.load_unique_code(),
+                        }
+                    data.update(get_machine_info())
+                    response_data = self.make_request_with_token('eai/device', data, method="PUT")
+                    logging.info(f"设备信息更新到平台反馈：{response_data}")
         except Exception as e:
             logging.error(f"未知错误，无法更新机器信息: {e}")
 
