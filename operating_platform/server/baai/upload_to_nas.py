@@ -465,7 +465,7 @@ class DataUploader:
             ffmpeg_cmd = ["ffmpeg"] + [item for pair in ffmpeg_args.items() for item in pair] + [str(video_path)]
             print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_cmd)}")
             
-            subprocess.run(ffmpeg_cmd, check=True, stdin=subprocess.DEV)
+            subprocess.run(ffmpeg_cmd, check=True)
             
             if not video_path.exists():
                 raise OSError(f"视频文件未生成: {video_path}")
@@ -510,7 +510,7 @@ class DataUploader:
             ffmpeg_cmd = ["ffmpeg"] + [item for pair in ffmpeg_args.items() for item in pair] + [str(video_path)]
             print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_cmd)}")
             
-            subprocess.run(ffmpeg_cmd, check=True, stdin=subprocess.DEV)
+            subprocess.run(ffmpeg_cmd, check=True)
             
             if not video_path.exists():
                 raise OSError(f"视频文件未生成: {video_path}")
@@ -553,7 +553,7 @@ class DataUploader:
             ]
             
             print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_args)}")
-            subprocess.run(ffmpeg_args, check=True, stdin=subprocess.DEV)
+            subprocess.run(ffmpeg_args, check=True)
             
             if not video_path.exists():
                 raise OSError(f"视频文件未生成: {video_path}")
