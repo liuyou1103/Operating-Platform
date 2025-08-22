@@ -23,8 +23,8 @@ from utils import setup_from_yaml
 
 
 
-MACHINE_ID_PATH = '/home/liuyou/.config/baai_platform/machine_code'
-UNIQUE_CODE_PATH = '/home/liuyou/.config/baai_platform/unique_code'
+MACHINE_ID_PATH = '/home/machine/.config/baai_platform/machine_code'
+UNIQUE_CODE_PATH = '/home/machine/.config/baai_platform/unique_code'
 
 
 class VideoStream:
