@@ -432,6 +432,7 @@ class DataUploader:
             task_id (Union[str, int]): 任务ID
         """
         data = {"task_id": str(task_id)}
+        print(f'------{task_id}-------')
         self.local_server_request('api/upload_task_id', data)
 
     @staticmethod
@@ -835,7 +836,11 @@ class DataUploader:
                                         "target_path": str(nas_file_list)
                                     }
                                     self.nas_auth.upload_file(task_msg, local_file_list, nas_file_list)
-                                
+                                print(task_cache_nas_path)
+                                print('--------')
+                                print(meta_file_list)
+                                print('--------')
+                                print(each_common_record_path)
                                 self.nas_auth.delete_folder(task_cache_nas_path)
                                 self.delete_file(meta_file_list)  
                                 self.modify_json(each_common_record_path, task_number)
@@ -943,6 +948,11 @@ class DataUploader:
                                 }
                                 #copy_files(local_file_list,nas_file_list) 
                                 self.nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
+                            print(task_cache_nas_path)
+                            print('--------')
+                            print(meta_file_list)
+                            print('--------')
+                            print(each_common_record_path)
                             self.nas_auth.delete_folder(task_cache_nas_path)
                             self.modify_json(each_common_record_path,task_number)
                             self.local_server_task_id_request(0)
