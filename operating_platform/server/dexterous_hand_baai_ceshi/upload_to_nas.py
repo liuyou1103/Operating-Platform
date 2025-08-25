@@ -37,6 +37,8 @@ class DataUploader:
             self.nas_data_path = self.config_dict['nas_data_path_dev']
             self.local_name = 'dev'
 
+        self.robot_type = self.config_dict['robot_type']
+
     @staticmethod
     def get_date_offset(days_offset):
         """获取指定偏移量的日期（格式：YYYYMMDD）"""
@@ -430,10 +432,11 @@ class DataUploader:
             task_id (Union[str, int]): 任务ID
         """
         data = {"task_id": str(task_id)}
+        print(f'------{task_id}-------')
         self.local_server_request('api/upload_task_id', data)
 
     @staticmethod
-    def encode_video_frames(imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int) -> bool:
+    def encode_video_frames(imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int,robot_type:str) -> bool:
         """
         编码普通视频帧
         
@@ -450,22 +453,32 @@ class DataUploader:
             imgs_dir = Path(imgs_dir)
             video_path = Path(video_path)
             video_path.parent.mkdir(parents=True, exist_ok=True)
-
-            ffmpeg_args = OrderedDict([
-                ("-f", "image2"),
-                ("-r", str(fps)),
-                ("-i", str(imgs_dir / "frame_%06d.jpg")),
-                ("-vcodec", "libx264"),
-                ("-pix_fmt", "yuv420p"),
-                ("-g", "5"),
-                ("-crf", "18"),
-                ("-loglevel", "error"),
-            ])
-
+            if robot_type == 'realman':
+                ffmpeg_args = OrderedDict([
+                    ("-f", "image2"),
+                    ("-r", str(fps)),
+                    ("-i", str(imgs_dir / "frame_%06d.jpg")),
+                    ("-vcodec", "libx264"),
+                    ("-pix_fmt", "yuv420p"),
+                    ("-g", "5"),
+                    ("-crf", "18"),
+                    ("-loglevel", "error"),
+                ])
+            else:
+                 ffmpeg_args = OrderedDict([
+                    ("-f", "image2"),
+                    ("-r", str(fps)),
+                    ("-i", str(imgs_dir / "frame_%06d.png")),
+                    ("-vcodec", "libx264"),
+                    ("-pix_fmt", "yuv420p"),
+                    ("-g", "5"),
+                    ("-crf", "18"),
+                    ("-loglevel", "error"),
+                ])
             ffmpeg_cmd = ["ffmpeg"] + [item for pair in ffmpeg_args.items() for item in pair] + [str(video_path)]
             print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_cmd)}")
             
-            subprocess.run(ffmpeg_cmd, check=True, stdin=subprocess.DEV)
+            subprocess.run(ffmpeg_cmd, check=True)
             
             if not video_path.exists():
                 raise OSError(f"视频文件未生成: {video_path}")
@@ -477,7 +490,7 @@ class DataUploader:
             return False
 
     @staticmethod
-    def encode_label_video_frames(imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int) -> bool:
+    def encode_label_video_frames(imgs_dir: Union[Path, str], video_path: Union[Path, str], fps: int,robot_type:str) -> bool:
         """
         编码普通视频帧
         
@@ -495,22 +508,33 @@ class DataUploader:
             video_path = Path(video_path)
             video_path.parent.mkdir(parents=True, exist_ok=True)
             #  ("-vcodec", "libx264"),
-
-            ffmpeg_args = OrderedDict([
-                ("-f", "image2"),
-                ("-r", str(fps)),
-                ("-i", str(imgs_dir / "frame_%06d.jpg")),
-                ("-vcodec", "libx264"),
-                ("-pix_fmt", "yuv420p"),
-                ("-g", "20"),
-                ("-crf", "23"),
-                ("-loglevel", "error"),
-            ])
+            if robot_type == 'realman':
+                ffmpeg_args = OrderedDict([
+                    ("-f", "image2"),
+                    ("-r", str(fps)),
+                    ("-i", str(imgs_dir / "frame_%06d.jpg")),
+                    ("-vcodec", "libx264"),
+                    ("-pix_fmt", "yuv420p"),
+                    ("-g", "20"),
+                    ("-crf", "23"),
+                    ("-loglevel", "error"),
+                ])
+            else:
+                ffmpeg_args = OrderedDict([
+                    ("-f", "image2"),
+                    ("-r", str(fps)),
+                    ("-i", str(imgs_dir / "frame_%06d.png")),
+                    ("-vcodec", "libx264"),
+                    ("-pix_fmt", "yuv420p"),
+                    ("-g", "20"),
+                    ("-crf", "23"),
+                    ("-loglevel", "error"),
+                ])
 
             ffmpeg_cmd = ["ffmpeg"] + [item for pair in ffmpeg_args.items() for item in pair] + [str(video_path)]
             print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_cmd)}")
             
-            subprocess.run(ffmpeg_cmd, check=True, stdin=subprocess.DEV)
+            subprocess.run(ffmpeg_cmd, check=True)
             
             if not video_path.exists():
                 raise OSError(f"视频文件未生成: {video_path}")
@@ -553,7 +577,7 @@ class DataUploader:
             ]
             
             print(f"[DEBUG] 执行FFmpeg命令: {' '.join(ffmpeg_args)}")
-            subprocess.run(ffmpeg_args, check=True, stdin=subprocess.DEV)
+            subprocess.run(ffmpeg_args, check=True)
             
             if not video_path.exists():
                 raise OSError(f"视频文件未生成: {video_path}")
@@ -723,6 +747,7 @@ class DataUploader:
                                 
                                 
                                 for data_id in range(last_epid, task_number):
+                                    print(last_epid,task_number)
                                     cloud_data_id = json_object_list[data_id]["dataid"]
                                     local_file_list = []
                                     nas_file_list = []
@@ -730,7 +755,7 @@ class DataUploader:
                                     nas_video_list = []
                                     ffmpeg_encode_flag = True
                                     for task_part in subdirectories_1:
-                                        if task_part == "images":
+                                        if task_part == "images" and data_id == last_epid:
                                             each_images_path = os.path.join(each_task_path, 'images')
                                             entries_2 = os.listdir(each_images_path)
                                             
@@ -751,16 +776,17 @@ class DataUploader:
                                                         if img_list:
                                                             for img_path, video_path in zip(img_list, video_list):
                                                                 print(f"[INFO] 处理普通图像avi: {img_path} -> {video_path}")
-                                                                if not self.encode_video_frames(img_path, video_path, fps):
+                                                                if not self.encode_video_frames(img_path, video_path, fps, self.robot_type):
                                                                     ffmpeg_encode_flag = False
                                                                     
                                                             for img_path, label_video_path in zip(img_list, label_video_path_list):
                                                                 print(f"[INFO] 处理普通图像mp4: {img_path} -> {label_video_path}")
-                                                                if not self.encode_label_video_frames(img_path, label_video_path, fps):
+                                                                if not self.encode_label_video_frames(img_path, label_video_path, fps, self.robot_type):
                                                                     ffmpeg_encode_flag = False
                                             if ffmpeg_encode_flag:
                                                 self.delete_directory(os.path.join(each_task_path, 'images'))
-                                                                    
+                                    entries_1 = os.listdir(each_task_path) 
+                                    subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))]                                
                                     for task_part in subdirectories_1:
                                         if task_part == "meta":
                                             if data_id == task_number - 1:
@@ -802,7 +828,8 @@ class DataUploader:
                                             elif isinstance(local_file, list):
                                                 local_video_list.extend(local_file)
                                                 nas_video_list.extend(nas_file)
-                                    
+                                    print(local_video_list)
+                                    print(nas_video_list)
                                     local_file_list.extend(local_video_list)
                                     nas_file_list.extend(nas_video_list)
                                     task_msg = {
@@ -812,7 +839,6 @@ class DataUploader:
                                         "target_path": str(nas_file_list)
                                     }
                                     self.nas_auth.upload_file(task_msg, local_file_list, nas_file_list)
-                                
                                 self.nas_auth.delete_folder(task_cache_nas_path)
                                 self.delete_file(meta_file_list)  
                                 self.modify_json(each_common_record_path, task_number)
@@ -821,6 +847,8 @@ class DataUploader:
                             else:
                                 for data_id in range(task_number): # 遍历任务数量
                                     ffmpeg_encode_flag = True
+                                    print('--------')
+                                    print(task_number)
                                     cloud_data_id = json_object_list[data_id]["dataid"]
                                     local_file_list = []
                                     nas_file_list = []
@@ -828,7 +856,7 @@ class DataUploader:
                                     nas_video_list = []
                                     
                                     for task_part in subdirectories_1:
-                                        if task_part == "images":
+                                        if task_part == "images" and data_id == 0:
                                             each_images_path = os.path.join(each_task_path, 'images')
                                             entries_2 = os.listdir(each_images_path)
                                             
@@ -849,16 +877,17 @@ class DataUploader:
                                                         if img_list:
                                                             for img_path, video_path in zip(img_list, video_list):
                                                                 print(f"[INFO] 处理普通图像avi: {img_path} -> {video_path}")
-                                                                if not self.encode_video_frames(img_path, video_path, fps):
+                                                                if not self.encode_video_frames(img_path, video_path, fps, self.robot_type):
                                                                     ffmpeg_encode_flag = False
                                                                     
                                                             for img_path, label_video_path in zip(img_list, label_video_path_list):
                                                                 print(f"[INFO] 处理普通图像mp4: {img_path} -> {label_video_path}")
-                                                                if not self.encode_label_video_frames(img_path, label_video_path, fps):
+                                                                if not self.encode_label_video_frames(img_path, label_video_path, fps, self.robot_type):
                                                                     ffmpeg_encode_flag = False
                                             if ffmpeg_encode_flag:
                                                 self.delete_directory(os.path.join(each_task_path, 'images'))
-                                                
+                                    entries_1 = os.listdir(each_task_path) 
+                                    subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))]            
                                     for task_part in subdirectories_1:
                                         if task_part == "meta":
                                             if data_id == task_number - 1:
@@ -909,7 +938,8 @@ class DataUploader:
                                             elif isinstance(local_file, list):
                                                 local_video_list.extend(local_file)
                                                 nas_video_list.extend(nas_file)
-                                    
+                                    print(local_video_list)
+                                    print(nas_video_list)
                                     local_file_list.extend(local_video_list)
                                     nas_file_list.extend(nas_video_list)
                                     task_msg = {
@@ -917,13 +947,13 @@ class DataUploader:
                                         "task_data_id": int(cloud_data_id),
                                         "source_path": each_task_path,
                                         "target_path":str(nas_file_list)
-                                }
-                                #copy_files(local_file_list,nas_file_list) 
-                                self.nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
-                            self.nas_auth.delete_folder(task_cache_nas_path)
-                            self.modify_json(each_common_record_path,task_number)
-                            self.local_server_task_id_request(0)
-                            break
+                                    }
+                                    #copy_files(local_file_list,nas_file_list) 
+                                    self.nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
+                                self.nas_auth.delete_folder(task_cache_nas_path)
+                                self.modify_json(each_common_record_path,task_number)
+                                self.local_server_task_id_request(0)
+                                break
                         else:
                             time.sleep(10)
             except Exception as e:

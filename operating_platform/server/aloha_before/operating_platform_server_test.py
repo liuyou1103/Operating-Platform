@@ -1,7 +1,7 @@
 coding = "utf-8"
 
 from gevent import monkey
-monkey.patch_all(subprocess=False)
+monkey.patch_all()
 
 from flask import Flask, jsonify, Response, request, session
 from flask_cors import CORS
@@ -16,13 +16,11 @@ from flask_socketio import SocketIO, emit
 import schedule
 import requests
 import json
-from upload_to_nas import DataUploader
+import upload_to_nas
 import uuid
-from upload_to_ks3 import RobotDataProcessor
-from utils import setup_from_yaml,get_machine_info
 
-
-
+MACHINE_ID_FILE = './machine_id.txt'
+MACHINE_ID_PATH = '/home/machine/.config/baai_platform/baai_server_machine_id'
 
 class VideoStream:
     def __init__(self, stream_id, stream_name):
@@ -81,30 +79,24 @@ class VideoStream:
 
  
 def get_machine_id():
-    return "default_machine_id"
+    if os.path.exists(MACHINE_ID_FILE):
+        with open(MACHINE_ID_FILE, 'r') as f:
+            return f.read().strip()
+    else:
+        return "BAAI_AX_AL_001"
 
 
 class FlaskServer:
     def __init__(self):
         # 初始化Flask应用
-        config_dict = setup_from_yaml()
-        if config_dict['device_server_type'] == 'release':
-            self.web = config_dict['platform_server_ip_release']
-            self.machine_id_path = config_dict['machine_id_path_release']
-            self.machine_unique_code = config_dict['machine_code_path_release']
-        else:
-            self.web = config_dict['platform_server_ip_dev']
-            self.machine_id_path = config_dict['machine_id_path_dev']
-            self.machine_unique_code = config_dict['machine_code_path_dev']
-        self.port = config_dict['device_server_port']
-        self.upload_type = config_dict['upload_type']
-        self.upload_time = str(config_dict['upload_time'])
-        self.robot_type = config_dict['robot_type']
-
         self.app = Flask(__name__)
+        self.app.secret_key = 'agilex'  # 暂时密钥
         self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         CORS(self.app)
 
+        #self.web = "http://120.92.116.59:80/api"
+        #self.web = "http://172.16.17.253:8080/api"
+        self.web = "http://ei2rmd.baai.ac.cn/api"
         self.session = requests.Session() 
         self.token = None
 
@@ -121,19 +113,9 @@ class FlaskServer:
         self.upload_lock = threading.Lock()  # 用于保护 self.upload_nas_flag 的访问
         self.init_streams_flag = False
         self.task_steps = {}
-        self.machine_information = None
-        self.machine_information_timestamp = None
         self.upload_thread = threading.Thread(target=self.time_job, daemon=True)
         self.upload_nas_flag = False
-        self.upload_ks3_flag = False
-        self.upload_ks3_id = '0'
-        self._running = False
-        self.ks3_processor = RobotDataProcessor(
-            fold_path=config_dict['device_data_path'],
-            server_url=config_dict['device_server_ip']
-        )
-        self.nas_processor = DataUploader()
-        self.replay_data = None
+        
         # 响应模板
         self.response_start_collection = {
             "timestamp": time.time(),
@@ -153,81 +135,78 @@ class FlaskServer:
             "msg": None
         }
         
-        self.response_start_replay = {
-            "timestamp": time.time(),
-            "msg": None,
-            "data": None
-
-        }
         # 注册路由
         self.register_routes()
 
 
     # ---------------------------------生成设备ID---------------------------------------------
-    def get_unique_code(self):
+    def get_address(self):
         # """获取 MAC 地址（格式：A1B2C3D4E5F6）"""
         # mac = uuid.getnode()
         # mac_hex = '{:012X}'.format(mac)  # 12 位大写十六进制
         # return mac_hex
         """生成随机唯一标识（不依赖硬件）"""
-        return str(uuid.uuid4())
+        return uuid.uuid4().hex.upper()[:12]
     
     def generate_machine_id(self):
         """生成机器 ID（MAC地址_aloha）"""
         mac = self.get_address()
         return f"{mac}_aloha"  # 格式：A1B2C3D4E5F6_aloha
     
-    def save_machine_platform_id(self,machine_id,unique_code):
-        """保存ID 到"""
+    def save_machine_id(self,machine_id):
+        """保存机器 ID 到"""
         try:
-            os.makedirs(os.path.dirname(self.machine_id_path), exist_ok=True)  # 确保目录存在
-            with open(self.machine_id_path, "w") as f:
+            os.makedirs(os.path.dirname(MACHINE_ID_PATH), exist_ok=True)  # 确保目录存在
+            with open(MACHINE_ID_PATH, "w") as f:
                 f.write(machine_id)
-            logging.info(f"机器 ID 已保存到 {self.machine_id_path}")
-            os.makedirs(os.path.dirname(self.machine_unique_code), exist_ok=True)  # 确保目录存在
-            with open(self.machine_unique_code, "w") as f:
-                f.write(unique_code)
-            logging.info(f"标识码 ID 已保存到 {self.machine_unique_code}")
+            logging.info(f"机器 ID 已保存到 {MACHINE_ID_PATH}")
             return True
         except Exception as e:
-            logging.error(f"保存 ID 失败: {e}")
+            logging.error(f"保存机器 ID 失败: {e}")
             return False
     
     def load_machine_id(self):
         """读取机器 ID"""
-        if not os.path.exists(self.machine_id_path):
+        if not os.path.exists(MACHINE_ID_PATH):
             logging.info("未找到机器 ID 文件，将生成新 ID")
             return None
         try:
-            with open(self.machine_id_path, "r") as f:
+            with open(MACHINE_ID_PATH, "r") as f:
                 machine_id = f.read().strip()
-                logging.info(f"已加载机器 ID")
+                logging.info(f"已加载机器 ID: {machine_id}")
                 return machine_id
         except Exception as e:
             logging.error(f"读取机器 ID 失败: {e}")
             return None
-        
-    def load_unique_code(self):
-        """读取标识 ID"""
-        if not os.path.exists(self.machine_unique_code):
-            logging.info("未找到标识码 文件")
-            return None
+    
+    def get_or_create_machine_id(self):
+        """主逻辑：检查是否存在，不存在则生成并保存"""
+        # 1. 尝试读取现有 ID
+        machine_id = self.load_machine_id()
+        if machine_id:
+            return machine_id
         try:
-            with open(self.machine_unique_code, "r") as f:
-                unique_code = f.read().strip()
-                logging.info(f"已加载标识码 ID")
-                return unique_code
+            # 2. 不存在则生成新 ID
+            logging.info("未找到机器 ID，正在生成...")
+            machine_id = self.generate_machine_id()
+            logging.info(f"生成的机器 ID: {machine_id}")
+        
+            # 3. 保存到用户目录
+            if self.save_machine_id(machine_id):
+                return machine_id
+            else:
+                logging.warning("警告：无法保存机器 ID")
+                return get_machine_id()
         except Exception as e:
-            logging.error(f"读取标识码 失败: {e}")
-            return None
-
+            logging.error(f"未知错误，无法生成机器 ID: {e}")
+            return get_machine_id()
     
     # --------------------------------定时任务-------------------------------------------------
     def login(self):
         """发送登录请求"""
         logging.info("[API Request] login - 开始登录云平台")
         url = f"{self.web}/login"
-         
+        
         data = {
             "username": "eai_data_collect",
             "password": "eai_collect@2025"
@@ -250,32 +229,25 @@ class FlaskServer:
             logging.error(f"[API Error] login - 请求异常: {str(e)}")
             return False
         
-    def make_request_with_token(self, path, data=None, method="POST"):
-        """发送带有 token 和请求体的请求（支持 GET/POST/PUT）"""
+    def make_request_with_token(self, path, data):
+        """发送带有 token 和请求体的请求"""
         if not self.token:
             logging.warning("[API Warning] make_request_with_token - 未登录，无法发送请求")
             return None
-
+    
         url = f"{self.web}/{path}"
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
         }
-
+    
         try:
-            logging.info(f"[API Request] make_request_with_token - 方法: {method}, 路径: {path}, 数据: {data}")
-            
-            # 根据 method 参数选择请求方式
-            if method == "GET":
-                response = self.session.get(url, headers=headers)
-            elif method == "POST":
+            logging.info(f"[API Request] make_request_with_token - 路径: {path}, 数据: {data}")
+            if data:
                 response = self.session.post(url, headers=headers, json=data)
-            elif method == "PUT":
-                response = self.session.put(url, headers=headers, json=data)
             else:
-                logging.error(f"[API Error] make_request_with_token - 不支持的请求方法: {method}")
-                return None
-
+                response = self.session.get(url, headers=headers)
+            
             logging.info(f"[API Response] make_request_with_token - 状态码: {response.status_code}")
             
             if response.status_code == 200:
@@ -292,7 +264,7 @@ class FlaskServer:
     def local_to_nas(self):
         logging.info(f"[Task] local_to_nas - 任务执行开始于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if self.login():
-            self.nas_processor.upload()
+            upload_to_nas.upload()
             with self.upload_lock:
                 self.upload_nas_flag = False
             logging.info("[Task] local_to_nas - 任务执行完成")
@@ -301,32 +273,16 @@ class FlaskServer:
                 self.upload_nas_flag = False
             logging.error("[Task] local_to_nas - 任务执行失败，登录不成功")
 
-    def local_to_ks3(self):
-        logging.info(f"[Task] local_to_ks3 - 任务执行开始于: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        if self.login():    
-            self.ks3_processor.encode_and_upload(self.token)
-            with self.upload_lock:
-                self.upload_ks3_flag = False
-            logging.info("[Task] local_to_ks3 - 任务执行完成")
-        else:
-            with self.upload_lock:
-                self.upload_ks3_flag = False
-            logging.error("[Task] local_to_ks3 - 任务执行失败，登录不成功")
-
     def time_job(self):
-        if self.upload_type == 'nas':
-            schedule.every().day.at(self.upload_time).do(self.local_to_nas)
-        else:
-            schedule.every().day.at(self.upload_time).do(self.local_to_ks3)
-        logging.info(f"[Task] time_job - 定时任务已启动，每天{self.upload_time}执行...")
+        schedule.every().day.at("14:00").do(self.local_to_nas)
+        logging.info("[Task] time_job - 定时任务已启动，每天23:00执行...")
         try:
             while True:
                 schedule.run_pending()
                 time.sleep(60)
         except KeyboardInterrupt:
             logging.info("[Task] time_job - 定时任务已停止")
-
-    #---------------------------初始化---------------------------------------------------------   
+    
     def init_logging(self):
         """初始化日志配置"""
         now = datetime.datetime.now()
@@ -339,8 +295,7 @@ class FlaskServer:
             filename=file_name,
             level=logging.DEBUG,
             format='%(asctime)s - %(levelname)s - %(message)s',
-            filemode="a",
-            encoding='utf-8'  # Python 3.9+ 支持
+            filemode="a"
         )
         # 添加控制台输出
         console_handler = logging.StreamHandler()
@@ -348,112 +303,11 @@ class FlaskServer:
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         console_handler.setFormatter(formatter)
         logging.getLogger('').addHandler(console_handler)
-
-    def register_machine(self,unique_code):
-        data = {
-            'device_body':self.robot_type,
-            'device_code':unique_code
-        }
-        response_data = self.make_request_with_token('eai/device/register', data, method="POST")
-        logging.info(response_data)
-        if response_data['code'] == 200:
-            machine_id = response_data['data']['device_id']
-            if self.save_machine_platform_id(machine_id,unique_code):
-                return machine_id
-        else:
-            return None
-
-    def init_or_get_machine_id(self):
-        if self.login():
-            """主逻辑：检查是否存在，不存在则生成并保存"""
-            # 1. 尝试读取现有 ID
-            machine_id = self.load_machine_id()
-            if machine_id:
-                return machine_id
-            try:
-                # 2.尝试读取标识文件
-                unique_code = self.load_unique_code()
-                if unique_code:
-                    # 依据标识码获取机器编码
-                    machine_id = self.register_machine(unique_code)
-                    if machine_id:
-                        return machine_id
-                # 3. 都不存在则生成新 ID
-                logging.info("未找到机器 ID和标识码，正在生成...")
-                unique_code = self.get_unique_code()
-                machine_id = self.register_machine(unique_code)
-                if machine_id:
-                    logging.info(f"生成的机器 ID")
-                    return machine_id
-                else:
-                    logging.info(f"生成的机器 ID 失败！！！！")
-                    return machine_id
-            except Exception as e:
-                logging.error(f"未知错误，无法生成机器 ID: {e}")
-                return None
-            
-    def set_is_connect_false(self,d):
-        if isinstance(d, dict):
-            for key, value in d.items():
-                if key == "is_connect":
-                    d[key] = False
-                else:
-                    self.set_is_connect_false(value)
-        elif isinstance(d, list):
-            for item in d:
-                self.set_is_connect_false(item)
-
-    def update_machine_information_to_platform(self):
-        try:
-            device_id = self.init_or_get_machine_id()
-            if self.machine_information:
-                data = {
-                        "device_id": device_id,
-                        "device_code": self.load_unique_code(),
-                    }
-                data.update(self.machine_information)
-                if abs(time.time() - self.machine_information_timestamp) > 80:
-                    self.set_is_connect_false(data) 
-                response_data = self.make_request_with_token('eai/device', data, method="PUT")
-                logging.info(f"设备信息更新到平台反馈：{response_data}")
-            else:
-                logging.warning(f"设备未上报信息")
-                if self.robot_type == "aloha":
-                    time.sleep(10)
-                    data = {
-                            "device_id": device_id,
-                            "device_code": self.load_unique_code(),
-                        }
-                    data.update(get_machine_info())
-                    response_data = self.make_request_with_token('eai/device', data, method="PUT")
-                    logging.info(f"设备信息更新到平台反馈：{response_data}")
-        except Exception as e:
-            logging.error(f"未知错误，无法更新机器信息: {e}")
-
-    def _run_periodic_update(self):
-        """定时执行更新任务的内部方法"""
-        while self._running:
-            self.update_machine_information_to_platform()
-            time.sleep(60)  # 每分钟执行一次
- 
-    def start_periodic_update(self):
-        """启动定时更新线程"""
-        if not self._running:
-            self._running = True
-            thread = threading.Thread(target=self._run_periodic_update, daemon=True)
-            thread.start()
-            logging.info("设备信息定时更新线程已启动(每分钟)")
- 
-    def stop_periodic_update(self):
-        """停止定时更新线程"""
-        self._running = False
-        logging.info("设备信息定时更新线程已停止")
-
+    
     def register_routes(self):
         """注册所有路由"""
         # 系统信息
         self.app.add_url_rule('/api/info', 'system_info', self.system_info, methods=['GET'])
-        self.app.add_url_rule('/api/device_information', 'device_information', self.device_information, methods=['GET'])
         
         # 视频流管理
         self.app.add_url_rule('/api/stream_info', 'get_streams', self.get_streams, methods=['GET'])
@@ -466,13 +320,9 @@ class FlaskServer:
         self.app.add_url_rule('/api/finish_collection', 'finish_collection', self.finish_collection, methods=['POST'])
         self.app.add_url_rule('/api/discard_collection', 'discard_collection', self.discard_collection, methods=['POST'])
         self.app.add_url_rule('/api/submit_collection', 'submit_collection', self.submit_collection, methods=['POST'])
-        
-        # 回放
-        self.app.add_url_rule('/api/start_replay', 'start_replay', self.start_replay, methods=['POST'])
-        
-        # 手动上传
+
+        # 手动上传nas
         self.app.add_url_rule('/api/manual_upload_nas', 'manual_upload_nas', self.manual_upload_nas, methods=['POST']) 
-        self.app.add_url_rule('/api/manual_upload_ks3', 'manual_upload_ks3', self.manual_upload_ks3, methods=['GET']) 
 
         # nas上传反馈
         self.app.add_url_rule('/api/upload_start', 'upload_start', self.upload_start, methods=['POST'])
@@ -480,18 +330,12 @@ class FlaskServer:
         self.app.add_url_rule('/api/upload_fail', 'upload_fail', self.upload_fail, methods=['POST'])
         self.app.add_url_rule('/api/upload_process', 'upload_process', self.upload_process, methods=['POST'])
        
-        # ks3反馈接口
-        self.app.add_url_rule('/api/upload_task_id', 'upload_task_id', self.upload_task_id, methods=['POST'])
-        self.app.add_url_rule('/api/upload_start_ks3', 'upload_start_ks3', self.upload_start_ks3, methods=['POST'])
-        self.app.add_url_rule('/api/upload_finish_ks3', 'upload_finish_ks3', self.upload_finish_ks3, methods=['POST'])
         
-    
         # 机器人接口
         self.app.add_url_rule('/robot/update_stream/<stream_id>', 'update_frame', self.update_frame, methods=['POST'])
         self.app.add_url_rule('/robot/stream_info', 'robot_get_video_list', self.robot_get_video_list, methods=['POST'])
         self.app.add_url_rule('/robot/response', 'robot_response', self.robot_response, methods=['POST'])
         self.app.add_url_rule('/robot/get_task_steps', 'get_task_steps', self.get_task_steps, methods=['GET'])
-        self.app.add_url_rule('/robot/update_machine_information', 'update_machine_information', self.update_machine_information, methods=['POST'])
         
         # WebSocket事件
         self.socketio.on_event('connect', self.handle_connect)
@@ -536,27 +380,6 @@ class FlaskServer:
         except Exception as e:
             logging.error(f"[API Error] system_info - 异常: {str(e)}")
             return jsonify({"error": str(e)}), 500
-        
-    def device_information(self):
-        """获取系统信息"""
-        logging.info("[API] device_information - 获取设备信息请求")
-        try:
-            response_data = {
-                "code": 200,
-                "data": {
-                    "device_id":self.load_machine_id()
-                },
-                "msg": "success"
-            }
-            return jsonify(response_data), 200
-        except Exception as e:
-            logging.error(f"[API Error] device_information - 异常: {str(e)}")
-            response_data = {
-                "code": 500,
-                "data": {},
-                "msg": str(e)
-            }
-            return jsonify(response_data), 500
     
     def get_streams(self):
         try:
@@ -742,23 +565,15 @@ class FlaskServer:
         try:
             logging.info("[API] start_collection - 开始采集请求")
             data = request.get_json()
-            self.replay_data = data
             logging.debug(f"[API] start_collection - 请求数据: {data}")
-            if self.upload_ks3_id == str(data['task_id']):
-                response_data = {
-                            "code": 404,
-                            "data": {},
-                            "msg": '该任务数据上传中，请勿采集'
-                        }
-                return jsonify(response_data), 200
-                
-            data['machine_id'] = self.load_machine_id() or "default_machine_id"
+            
+            data['machine_id'] = get_machine_id()
             self.task_steps = data
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'start_collection', 'msg': data})
             
             while True:
-                if 0 < self.response_start_collection["timestamp"] - now_time < 15:
+                if 0 < self.response_start_collection["timestamp"] - now_time < 8:
                     if self.response_start_collection['msg'] == "success":
                         logging.info("[API] start_collection - 采集开始成功")
                         response_data = {
@@ -777,7 +592,7 @@ class FlaskServer:
                         return jsonify(response_data), 200
                 else:
                     time.sleep(0.02)
-                if time.time() - now_time > 15:
+                if time.time() - now_time > 8:
                     logging.warning("[API] start_collection - 机器人响应超时")
                     response_data = {
                         "code": 404,
@@ -799,6 +614,7 @@ class FlaskServer:
             logging.info("[API] finish_collection - 完成采集请求")
             data = request.get_json()
             logging.debug(f"[API] finish_collection - 请求数据: {data}")
+            
             now_time = time.time()
             self.send_message_to_robot(self.robot_sid, message={'cmd': 'finish_collection'})
             
@@ -806,7 +622,6 @@ class FlaskServer:
                 if 0 < self.response_finish_collection["timestamp"] - now_time < 100:
                     if self.response_finish_collection['msg'] == "success":
                         logging.info("[API] finish_collection - 采集完成成功")
-                        self.response_finish_collection['data']["device_id"] = self.load_machine_id()
                         response_data = {
                             "code": 200,
                             "data": self.response_finish_collection['data'],
@@ -931,63 +746,6 @@ class FlaskServer:
                 "msg": str(e)
             }
             return jsonify(response_data), 500
-        
-    def start_replay(self):
-        """处理开始回放的API请求"""
-        try:
-            logging.info("[API] start_replay - 开始回放请求")
-            request_data = request.get_json()
-            logging.debug(f"[API] start_replay - 请求数据: {request_data}")
-            if not request_data:
-                request_data = self.replay_data
-            # 发送开始回放指令给机器人
-            start_time = time.time()
-            self.send_message_to_robot(
-                self.robot_sid,
-                message={'cmd': 'start_replay', 'msg': request_data}  # 指令改为 start_replay
-            )
-            # 等待机器人响应（最多15秒）
-            while True:
-                current_time = time.time()
-                elapsed_time = current_time - start_time
-                # 检查是否收到有效响应（15秒内）
-                if 0 < self.response_start_replay.get("timestamp", 0) - start_time < 5:
-                    if self.response_start_replay.get('msg') == "success":
-                        logging.info("[API] start_replay - 回放启动成功")
-                        response_data = {
-                            "code": 200,
-                            "data": self.response_start_replay.get('data'),
-                            "msg": "回放启动成功"
-                        }
-                        return jsonify(response_data), 200
-                    else:
-                        error_msg = self.response_start_replay.get('msg', "未知错误")
-                        logging.warning(f"[API] start_replay - 回放启动失败: {error_msg}")
-                        response_data = {
-                            "code": 400,
-                            "data": {},
-                            "msg": error_msg
-                        }
-                        return jsonify(response_data), 200
-                else:
-                    time.sleep(0.02)  # 避免CPU空转
-                # 超时处理
-                if elapsed_time > 5:
-                    logging.warning("[API] start_replay - 机器人响应超时")
-                    response_data = {
-                        "code": 408,  # 408 表示请求超时
-                        "data": {},
-                        "msg": "机器人响应超时"
-                    }
-                    return jsonify(response_data), 200
-        except Exception as e:
-            logging.error(f"[API Error] start_replay - 异常: {str(e)}")
-            response_data = {
-                "code": 500,
-                "data": {},
-                "msg": f"服务器内部错误: {str(e)}"
-            }
-            return jsonify(response_data), 500
     
     def standby(self):
         if 'user_id' not in session:
@@ -1010,7 +768,7 @@ class FlaskServer:
                     return jsonify(response_data), 200
                 else:
                     self.upload_nas_flag = True
-                    if not self.nas_processor.nas_auth.get_auth_sid():
+                    if not upload_to_nas.nas_auth.get_auth_sid():
                         logging.error("[API] manual_upload_nas - 连接NAS异常")
                         response_data = {
                             "code": 601,
@@ -1045,47 +803,6 @@ class FlaskServer:
                 "msg": str(e)
             }
             return jsonify(response_data), 500
-        
-    def manual_upload_ks3(self):
-        try:
-            logging.info("[API] manual_upload_ks3 - 手动上传NAS请求")
-            with self.upload_lock:
-                if self.upload_ks3_flag:
-                    logging.warning("[API] manual_upload_ks3 - 数据上传中")
-                    response_data = {
-                        "code": 601,
-                        "data": {},
-                        "msg": '数据上传中'
-                    }
-                    return jsonify(response_data), 200
-                else:
-                    self.upload_ks3_flag = True
-                    if not self.login():
-                        logging.error("[API] manual_upload_ks3 -网络异常")
-                        response_data = {
-                            "code": 601,
-                            "data": {},
-                            "msg": '网络异常'
-                        }
-                        self.upload_ks3_flag = False
-                        return jsonify(response_data), 200
-                    upload_manual_thread = threading.Thread(target=self.local_to_ks3, daemon=True)
-                    upload_manual_thread.start()
-                    logging.info("[API] manual_upload_ks3 - 启动上传线程")
-                    response_data = {
-                        "code": 200,
-                        "data": {},
-                        "msg": 'success'
-                    }
-                    return jsonify(response_data), 200
-        except Exception as e:
-            logging.error(f"[API Error] manual_upload_ks3 - 异常: {str(e)}")
-            response_data = {
-                "code": 500,
-                "data": {},
-                "msg": str(e)
-            }
-            return jsonify(response_data), 500
 
     # ---------------------------------------upload----------------------------------------------
     def upload_start(self):
@@ -1095,39 +812,13 @@ class FlaskServer:
             logging.debug(f"[API] upload_start - 请求数据: {data}")
             
             data['transfer_type'] = 'local_to_nas'
-            self.make_request_with_token('eai/dts/upload/start', data, method="POST")
-            logging.info("[API] upload_start - 上传开始通知处理完成")
-            return jsonify({}), 200
-        except Exception as e:
-            logging.error(f"[API Error] upload_start - 异常: {str(e)}")
-            return jsonify({'error': str(e)}), 500
-        
-    def upload_start_ks3(self):
-        try:
-            logging.info("[API] upload_start - 上传开始通知")
-            data = request.get_json()
-            print(data)
-            logging.debug(f"[API] upload_start - 请求数据: {data}")
-            
-            self.make_request_with_token('eai/dts/upload/start', data, method="POST")
+            self.make_request_with_token('eai/dts/upload/start', data)
             logging.info("[API] upload_start - 上传开始通知处理完成")
             return jsonify({}), 200
         except Exception as e:
             logging.error(f"[API Error] upload_start - 异常: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
-    def upload_finish_ks3(self):
-        try:
-            logging.info("[API] upload_finish - 上传完成通知")
-            data = request.get_json()
-            logging.debug(f"[API] upload_finish - 请求数据: {data}")
-            self.make_request_with_token('eai/dts/upload/complete', data, method="POST")
-            logging.info("[API] upload_finish - 上传完成通知处理完成")
-            return jsonify({}), 200
-        except Exception as e:
-            logging.error(f"[API Error] upload_finish - 异常: {str(e)}")
-            return jsonify({'error': str(e)}), 500
-        
     def upload_finish(self):
         try:
             logging.info("[API] upload_finish - 上传完成通知")
@@ -1140,7 +831,7 @@ class FlaskServer:
                 "transfer_type": "local_to_nas",     
                 "status": "SUCCESS" 
             }
-            self.make_request_with_token('eai/dts/upload/complete', response_data, method="POST")
+            self.make_request_with_token('eai/dts/upload/complete', response_data)
             logging.info("[API] upload_finish - 上传完成通知处理完成")
             return jsonify({}), 200
         except Exception as e:
@@ -1169,7 +860,7 @@ class FlaskServer:
                     "status": "FAILED",
                     "expand": '{"nas_failed_msg":"网络通讯错误"}' 
                 }
-            self.make_request_with_token('eai/dts/upload/complete', response_data, method="POST")
+            self.make_request_with_token('eai/dts/upload/complete', response_data)
             logging.info("[API] upload_fail - 上传失败通知处理完成")
             return jsonify({}), 200
         except Exception as e:
@@ -1183,22 +874,11 @@ class FlaskServer:
             logging.debug(f"[API] upload_process - 请求数据: {data}")
             
             data['transfer_type'] = 'local_to_nas'
-            self.make_request_with_token('eai/dts/upload/process', data, method="POST")
+            self.make_request_with_token('eai/dts/upload/process', data)
             logging.info("[API] upload_process - 上传进度通知处理完成")
             return jsonify({}), 200
         except Exception as e:
             logging.error(f"[API Error] upload_process - 异常: {str(e)}")
-            return jsonify({'error': str(e)}), 500
-        
-    def upload_task_id(self):
-        try:
-            logging.info("[API] upload_task_id - 上传id通知")
-            data = request.get_json()
-            logging.debug(f"[API] upload_task_id - 请求数据: {data}")
-            self.upload_ks3_id  = data['task_id']
-            return jsonify({}), 200
-        except Exception as e:
-            logging.error(f"[API Error] upload_task_id - 异常: {str(e)}")
             return jsonify({'error': str(e)}), 500
 
     # ---------------------------------------robot------------------------------------------------
@@ -1282,28 +962,10 @@ class FlaskServer:
                     "timestamp": time.time(),
                     "msg": data["msg"]
                 }
-            elif data["cmd"] == "start_replay":
-                self.response_start_replay = {
-                    "timestamp": time.time(),
-                    "msg": data["msg"],
-                    "data": data["data"]
-                }
             logging.info("[API] robot_response - 响应处理完成")
             return jsonify({}), 200
         except Exception as e:
             logging.error(f"[API Error] robot_response - 异常: {str(e)}")
-            return jsonify({"error": f"服务器内部错误: {str(e)}"}), 500
-    
-    def update_machine_information(self):
-        try:
-            logging.info("[API] update_machine_information - 机器人响应")
-            data = request.get_json()
-            logging.debug(f"[API] update_machine_information - 响应数据: {data}")
-            self.machine_information = data
-            self.machine_information_timestamp = time.time()
-            return jsonify({}), 200
-        except Exception as e:
-            logging.error(f"[API Error] update_machine_information - 异常: {str(e)}")
             return jsonify({"error": f"服务器内部错误: {str(e)}"}), 500
     
     def get_task_steps(self):
@@ -1314,8 +976,7 @@ class FlaskServer:
     def run(self):
         logging.info("[Server] run - 启动服务器")
         self.upload_thread.start()
-        self.start_periodic_update()
-        self.socketio.run(self.app, host='0.0.0.0', port=8088, debug=False)
+        self.socketio.run(self.app, host='0.0.0.0', port=8080, debug=False)
 
 
 
