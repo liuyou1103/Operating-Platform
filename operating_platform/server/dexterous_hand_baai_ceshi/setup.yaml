@@ -1,4 +1,4 @@
-robot_type: aloha
+robot_type: dexterous_hand
 device_server_ip: http://localhost:8088
 device_server_port: 8088
 device_data_path: /home/robot/dataset
