@@ -970,7 +970,7 @@ class DataUploader:
                     local_nas_info_path = os.path.join(each_task_path,"info.json")
                     shutil.copy(nas_info_path,local_nas_info_path)
                     self.modify_feature_dtypes(local_nas_info_path,entries_2,'video')
-                    nas_nas_info_path = os.path.join(self.nas_data_path,"meta", "info.json")
+                    nas_nas_info_path = os.path.join(self.nas_data_path,middle_name, "meta", "info.json")
                     info_encode_flag = True
 
         entries_1 = os.listdir(each_task_path) 
