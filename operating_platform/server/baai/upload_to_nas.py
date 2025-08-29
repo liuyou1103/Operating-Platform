@@ -323,7 +323,8 @@ class DataUploader:
             data_nas["total_episodes"] += (n - m)
             data_nas["total_frames"] += frames
             data_nas["total_videos"] += int((total_videos / n) * (n - m))
-
+            # data_nas["video_path"] = "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.avi"
+            # data_nas["image_path"] = None
         # 将更新后的数据写回 nas_meta_file_path
         with open(nas_meta_file_path, "w", encoding="utf-8") as f:
             json.dump(data_nas, f, ensure_ascii=False, indent=4)
@@ -350,6 +351,60 @@ class DataUploader:
         # 写回文件
         with open(path, 'w', encoding='utf-8') as file:
             json.dump(existing_data, file, indent=4, ensure_ascii=False)
+
+    @staticmethod
+    def modify_feature_dtypes(local_nas_info_path, target_fields, new_dtype):
+        """
+        修改 metadata 中 features 的 dtype（仅修改 target_fields 中的字段）
+        
+        Args:
+            each_task_path (str): 任务路径（包含 'meta/info.json'）
+            target_fields (list): 需要修改的字段名列表（如 ["timestamp", "frame_index"]）
+            new_dtype (str): 新的 dtype（如 "float64"）
+        
+        Returns:
+            bool: 修改成功返回 True，失败返回 False
+        """
+        
+        try:
+            # 1. 读取 JSON 文件
+            with open(local_nas_info_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            
+            # 2. 检查并修改 dtype
+            if "features" not in metadata:
+                raise ValueError("Invalid metadata: missing 'features' key.")
+            
+            features = metadata["features"]
+            modified_fields = []
+
+            metadata["total_videos"] = int(metadata["total_episodes"]*len(target_fields))
+            metadata["video_path"] = "videos/chunk-{episode_chunk:03d}/{video_key}/episode_{episode_index:06d}.avi"
+            metadata["image_path"] = None
+            for field_name, field_info in features.items():
+                if field_name in target_fields:
+                    field_info["dtype"] = new_dtype
+                    modified_fields.append(field_name)
+            
+            if not modified_fields:
+                print(f"[WARNING] No target fields found in {local_nas_info_path}. Available fields: {list(features.keys())}")
+                return False
+            
+            # 3. 写回 JSON 文件
+            with open(local_nas_info_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=4, ensure_ascii=False)
+            
+            print(f"[INFO] Successfully modified dtype for {modified_fields} in {local_nas_info_path}")
+            return True
+        
+        except FileNotFoundError:
+            print(f"[ERROR] File not found: {local_nas_info_path}")
+        except json.JSONDecodeError:
+            print(f"[ERROR] Invalid JSON format in {local_nas_info_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed to modify {local_nas_info_path}: {str(e)}")
+        
+        return False
 
     @staticmethod
     def grant_recursive_rw_permission(directory, username, pd):
@@ -756,7 +811,7 @@ class DataUploader:
                             list2 = [nas_info_file_path, nas_meta_file_path, nas_episodes_file_path, nas_episodes_stats_file_path]
                             for data_id in range(last_epid, task_number):
                                 cloud_data_id = json_object_list[data_id]["dataid"]
-                                self.organize_data(subdirectories_1,each_task_path,data_id,last_epid,last_episode_id,cloud_data_id,list1,list2,fps,task_data_name,middle_name,task_number,task_id)
+                                self.organize_data(subdirectories_1,each_task_path,data_id,last_epid,last_episode_id,cloud_data_id,list1,list2,fps,task_data_name,middle_name,task_number,task_id,local_nas_info_path)
 
                             self.nas_auth.delete_folder(task_cache_nas_path)
                             self.delete_file(meta_file_list)  
@@ -782,7 +837,7 @@ class DataUploader:
         except Exception as e:
             print(str(e))
  
-    def organize_data(self,subdirectories_1,each_task_path,data_id,last_epid,last_episode_id,cloud_data_id,list1,list2,fps,task_data_name,middle_name,task_number,task_id):
+    def organize_data(self,subdirectories_1,each_task_path,data_id,last_epid,last_episode_id,cloud_data_id,list1,list2,fps,task_data_name,middle_name,task_number,task_id,local_nas_info_path):
         local_file_list = []
         nas_file_list = []
         local_video_list = []
@@ -819,6 +874,7 @@ class DataUploader:
                                         ffmpeg_encode_flag = False
                 if ffmpeg_encode_flag:
                     self.delete_directory(os.path.join(each_task_path, 'images'))
+                    self.modify_feature_dtypes(local_nas_info_path,entries_2,'video')
         entries_1 = os.listdir(each_task_path) 
         subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))]                                
         for task_part in subdirectories_1:
@@ -874,6 +930,7 @@ class DataUploader:
 
     def organize_data2(self,subdirectories_1,each_task_path,data_id,cloud_data_id,fps,task_data_name,middle_name,task_number,task_id):
         ffmpeg_encode_flag = True
+        info_encode_flag = False
         local_file_list = []
         nas_file_list = []
         local_video_list = []
@@ -909,6 +966,13 @@ class DataUploader:
                                         ffmpeg_encode_flag = False
                 if ffmpeg_encode_flag:
                     self.delete_directory(os.path.join(each_task_path, 'images'))
+                    nas_info_path = os.path.join(each_task_path,"meta","info.json")
+                    local_nas_info_path = os.path.join(each_task_path,"info.json")
+                    shutil.copy(nas_info_path,local_nas_info_path)
+                    self.modify_feature_dtypes(local_nas_info_path,entries_2,'video')
+                    nas_nas_info_path = os.path.join(self.nas_data_path,"meta", "info.json")
+                    info_encode_flag = True
+
         entries_1 = os.listdir(each_task_path) 
         subdirectories_1 = [entry for entry in entries_1 if os.path.isdir(os.path.join(each_task_path, entry))]            
         for task_part in subdirectories_1:
@@ -922,7 +986,13 @@ class DataUploader:
                     elif isinstance(local_file, list):
                         local_file_list.extend(local_file)
                         nas_file_list.extend(nas_file)
-                        
+                    if info_encode_flag:
+                        if nas_nas_info_path in nas_file_list:
+                            # 如果已经存在，找到所有匹配的索引并替换对应的 local 路径
+                            for i in range(len(nas_file_list)):
+                                if nas_file_list[i] == nas_nas_info_path:
+                                    local_file_list[i] = local_nas_info_path
+                                        
             elif task_part == "data":
                 fold_path = os.path.join(each_task_path, task_part, "chunk-000")
                 local_file, nas_file = self.get_nth_file_in_subdirectories(fold_path, data_id, 0, task_data_name, middle_name, 0)
@@ -970,3 +1040,5 @@ class DataUploader:
             "target_path":str(nas_file_list)
         }
         self.nas_auth.upload_file(task_msg,local_file_list,nas_file_list)
+        if info_encode_flag:
+            os.remove(local_nas_info_path)
